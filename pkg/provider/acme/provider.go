@@ -491,7 +491,7 @@ func (p *Provider) watchNewDomains(ctx context.Context) {
 
 						if len(route.TLS.Domains) > 0 {
 							domains := deleteUnnecessaryDomains(ctxRouter, route.TLS.Domains)
-							for i := 0; i < len(domains); i++ {
+							for i := range len(domains) {
 								domain := domains[i]
 								safe.Go(func() {
 									dom, cert, err := p.resolveCertificate(ctx, domain, traefiktls.DefaultTLSStoreName)
@@ -528,7 +528,7 @@ func (p *Provider) watchNewDomains(ctx context.Context) {
 
 						if len(route.TLS.Domains) > 0 {
 							domains := deleteUnnecessaryDomains(ctxRouter, route.TLS.Domains)
-							for i := 0; i < len(domains); i++ {
+							for i := range len(domains) {
 								domain := domains[i]
 								safe.Go(func() {
 									dom, cert, err := p.resolveCertificate(ctx, domain, traefiktls.DefaultTLSStoreName)
