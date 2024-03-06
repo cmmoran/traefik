@@ -68,9 +68,6 @@ type VaultConfig struct {
 	Auth       *VaultAuth `description:"" json:"auth,omitempty" toml:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
-// ocspMustStaple enables OCSP stapling as from https://github.com/go-acme/lego/issues/270.
-var ocspMustStaple = false
-
 // Configuration holds ACME configuration provided by users.
 type Configuration struct {
 	Email                string       `description:"Email address used for registration." json:"email,omitempty" toml:"email,omitempty" yaml:"email,omitempty"`
