@@ -29,6 +29,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.5
 	github.com/hashicorp/go-version v1.6.0
 	github.com/hashicorp/nomad/api v0.0.0-20240122103822-8a4bd61caf74
+	github.com/hashicorp/vault-client-go v0.4.3
 	github.com/http-wasm/http-wasm-host-go v0.6.0
 	github.com/influxdata/influxdb-client-go/v2 v2.7.0
 	github.com/influxdata/influxdb1-client v0.0.0-20191209144304-8bf82d3c094d
@@ -208,6 +209,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
+	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
@@ -279,6 +281,7 @@ require (
 	github.com/quic-go/qtls-go1-20 v0.4.1 // indirect
 	github.com/redis/go-redis/v9 v9.2.1 // indirect
 	github.com/rs/cors v1.7.0 // indirect
+	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/sacloud/api-client-go v0.2.8 // indirect
 	github.com/sacloud/go-http v0.1.6 // indirect
 	github.com/sacloud/iaas-api-go v1.11.1 // indirect
