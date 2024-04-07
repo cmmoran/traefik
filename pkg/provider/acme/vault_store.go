@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/hashicorp/vault-client-go/schema"
-	"github.com/traefik/traefik/v3/pkg/safe"
 	"strings"
 	"sync"
 
 	"github.com/hashicorp/vault-client-go"
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/traefik/v3/pkg/logs"
+	"github.com/traefik/traefik/v3/pkg/safe"
 )
 
 var _ Store = (*VaultStore)(nil)
@@ -29,6 +29,7 @@ type VaultStore struct {
 
 // NewVaultStore initializes a new VaultStore with a vault.
 func NewVaultStore(filename string, config *VaultConfig) *VaultStore {
+	logger := log.With().Str(logs.ProviderName, "acme").Logger()
 	found := true
 	for strings.HasPrefix(filename, "/") && found {
 		filename, found = strings.CutPrefix(filename, "/")
@@ -38,6 +39,7 @@ func NewVaultStore(filename string, config *VaultConfig) *VaultStore {
 		vaultConfig:  config,
 		filename:     filename,
 	}
+	logger.Info().Msgf("Created VaultStore mountpath=%s filename=%s", store.vaultConfig.EnginePath, store.filename)
 	store.Init()
 	store.listenSaveAction()
 	return store
@@ -97,7 +99,13 @@ func (v *VaultStore) Init() {
 	}
 	v.client, _ = vault.New(vault.WithAddress(v.vaultConfig.Url), vault.WithTLS(tlsConfig))
 
-	if len(v.vaultConfig.Auth.Token) > 0 {
+	if len(v.vaultConfig.Namespace) > 0 {
+		if err := v.client.SetNamespace(v.vaultConfig.Namespace); err != nil {
+			log.Error().Msgf("Error setting namespace=%s", v.vaultConfig.Namespace)
+		}
+	}
+	switch {
+	case len(v.vaultConfig.Auth.Token) > 0:
 		var (
 			err error
 		)
@@ -116,8 +124,7 @@ func (v *VaultStore) Init() {
 				}
 			}
 		}
-	}
-	if v.vaultConfig.Auth.CertAuth != nil {
+	case v.vaultConfig.Auth.CertAuth != nil:
 		var (
 			err  error
 			resp *vault.Response[map[string]interface{}]
@@ -139,7 +146,7 @@ func (v *VaultStore) Init() {
 						log.Info().Msgf("Vault storage has certificate(s): cert: len(data) == %d", len(data))
 					} else {
 						if cerr != nil {
-							log.Error().Err(err).Msg("Vault storage has no certificate (error)")
+							log.Error().Msgf("Vault storage has no certificate (error=%v)", err)
 						} else {
 							log.Error().Err(err).Msg("Vault storage has no certificate")
 						}
@@ -162,7 +169,9 @@ func (v *VaultStore) save(resolverName string, storedData *StoredData) {
 }
 
 func (v *VaultStore) checkVault() (bool, []byte, error) {
+	log.Info().Msgf("Checking Vault for certificate filename[%s] mount[%s]", v.filename, v.vaultConfig.EnginePath)
 	if resp, err := v.client.Secrets.KvV2Read(context.Background(), v.filename, vault.WithMountPath(v.vaultConfig.EnginePath)); err != nil {
+		log.Error().Msgf("Error while checking Vault for certificate filename[%s] mount[%s], err=%v", v.filename, v.vaultConfig.EnginePath, err)
 		return false, nil, err
 	} else {
 		if resp.Data.Data != nil {
