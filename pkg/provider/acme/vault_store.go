@@ -2,9 +2,11 @@ package acme
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"github.com/hashicorp/vault-client-go/schema"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -129,9 +131,13 @@ func (v *VaultStore) Init() {
 			err  error
 			resp *vault.Response[map[string]interface{}]
 		)
+		ro := make([]vault.RequestOption, 0)
+		if len(v.vaultConfig.Auth.CertAuth.EnginePath) > 0 {
+			ro = append(ro, vault.WithMountPath(v.vaultConfig.Auth.CertAuth.EnginePath))
+		}
 		if resp, err = v.client.Auth.CertLogin(context.Background(), schema.CertLoginRequest{
 			Name: v.vaultConfig.Auth.CertAuth.Name,
-		}); err != nil {
+		}, ro...); err != nil {
 			log.Error().Err(err).Msg("Vault Login, err")
 			return
 		} else {
@@ -154,6 +160,63 @@ func (v *VaultStore) Init() {
 				}
 			}
 		}
+	case v.vaultConfig.Auth.AppRole != nil:
+		var (
+			err  error
+			resp *vault.Response[map[string]interface{}]
+		)
+		ro := make([]vault.RequestOption, 0)
+		if len(v.vaultConfig.Auth.AppRole.EnginePath) > 0 {
+			ro = append(ro, vault.WithMountPath(v.vaultConfig.Auth.AppRole.EnginePath))
+		}
+		if resp, err = v.client.Auth.AppRoleLogin(context.Background(), schema.AppRoleLoginRequest{
+			RoleId:   v.vaultConfig.Auth.AppRole.RoleID,
+			SecretId: v.vaultConfig.Auth.AppRole.SecretID,
+		}, ro...); err != nil {
+			if terr := v.client.SetToken(v.vaultConfig.Auth.AppRole.SecretID); terr != nil {
+				return
+			}
+			if unwrappResponse, uerr := v.client.System.Unwrap(context.Background(), schema.UnwrapRequest{}); uerr != nil {
+				return
+			} else {
+				unwrappedSecretId := unwrappResponse.Data["secret_id"].(string)
+				if resp, err = v.client.Auth.AppRoleLogin(context.Background(), schema.AppRoleLoginRequest{
+					RoleId:   v.vaultConfig.Auth.AppRole.RoleID,
+					SecretId: unwrappedSecretId,
+				}, ro...); err != nil {
+					return
+				} else {
+					log.Info().Msg("Vault AppRole Login, no err")
+				}
+				// Update client token
+				if resp != nil && resp.Auth != nil && len(resp.Auth.ClientToken) != 0 {
+					if err = v.client.SetToken(resp.Auth.ClientToken); err != nil {
+						return
+					}
+				}
+			}
+		} else {
+			log.Info().Msg("Vault AppRole Login, no err")
+		}
+		// Update client token
+		if resp != nil && resp.Auth != nil && len(resp.Auth.ClientToken) != 0 {
+			if err = v.client.SetToken(resp.Auth.ClientToken); err != nil {
+				log.Error().Err(err).Msg("Error setting client token from vault")
+				return
+			} else {
+				log.Info().Msg("Vault AppRole Token set! Checking certificate storage")
+				hasData, data, cerr := v.checkVault()
+				if hasData {
+					log.Info().Msgf("Vault storage has certificate(s): cert: len(data) == %d", len(data))
+				} else {
+					if cerr != nil {
+						log.Error().Msgf("Vault storage has no certificate (error=%v)", err)
+					} else {
+						log.Error().Err(err).Msg("Vault storage has no certificate")
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -171,6 +234,21 @@ func (v *VaultStore) save(resolverName string, storedData *StoredData) {
 func (v *VaultStore) checkVault() (bool, []byte, error) {
 	log.Info().Msgf("Checking Vault for certificate filename[%s] mount[%s]", v.filename, v.vaultConfig.EnginePath)
 	if resp, err := v.client.Secrets.KvV2Read(context.Background(), v.filename, vault.WithMountPath(v.vaultConfig.EnginePath)); err != nil {
+		if vault.IsErrorStatus(err, http.StatusNotFound) {
+			if _, err = v.client.Secrets.KvV2Write(context.Background(), v.filename, schema.KvV2WriteRequest{
+				Data: map[string]interface{}{
+					"data": &StoredData{
+						Account:      nil,
+						Certificates: make([]*CertAndStore, 0),
+					},
+				},
+			}, vault.WithMountPath(v.vaultConfig.EnginePath)); err != nil {
+				return false, nil, err
+			} else {
+				// created and saved an empty *StoredData to vault
+				return false, nil, nil
+			}
+		}
 		log.Error().Msgf("Error while checking Vault for certificate filename[%s] mount[%s], err=%v", v.filename, v.vaultConfig.EnginePath, err)
 		return false, nil, err
 	} else {
@@ -211,7 +289,10 @@ func (v *VaultStore) get(resolverName string) (*StoredData, error) {
 			logger := log.With().Str(logs.ProviderName, "acme").Logger()
 
 			if len(data) > 0 {
-				if err := json.Unmarshal(data, &v.storedData); err != nil {
+				if decodedData, derr := base64.StdEncoding.DecodeString(string(data)); derr == nil {
+					data = decodedData
+				}
+				if err = json.Unmarshal(data, &v.storedData); err != nil {
 					return nil, err
 				}
 			}

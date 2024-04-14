@@ -34,13 +34,13 @@ import (
 const resolverSuffix = ".acme"
 
 type VaultK8s struct {
-	Path string `description:"" json:"path,omitempty" toml:"path,omitempty" yaml:"path,omitempty"`
-	Role string `description:"" json:"role,omitempty" toml:"role,omitempty" yaml:"role,omitempty"`
+	Role       string `description:"" json:"role,omitempty" toml:"role,omitempty" yaml:"role,omitempty"`
+	EnginePath string `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
 }
 type VaultAuthAppRole struct {
-	RoleID   string `description:"" json:"roleID,omitempty" toml:"roleID,omitempty" yaml:"roleID,omitempty"`
-	SecretID string `description:"" json:"secretID,omitempty" toml:"secretID,omitempty" yaml:"secretID,omitempty"`
-	Path     string `description:"" json:"path,omitempty" toml:"path,omitempty" yaml:"path,omitempty"`
+	RoleID     string `description:"" json:"roleID,omitempty" toml:"roleID,omitempty" yaml:"roleID,omitempty"`
+	SecretID   string `description:"" json:"secretID,omitempty" toml:"secretID,omitempty" yaml:"secretID,omitempty"`
+	EnginePath string `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
 }
 type VaultAuth struct {
 	Token      string            `description:"" json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
@@ -49,7 +49,8 @@ type VaultAuth struct {
 	Kubernetes *VaultK8s         `description:"" json:"kubernetes,omitempty" toml:"kubernetes,omitempty" yaml:"kubernetes,omitempty"`
 }
 type VaultCertAuth struct {
-	Name string `description:"" json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty"`
+	Name       string `description:"" json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty"`
+	EnginePath string `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
 }
 type VaultTls struct {
 	CABundle   string `description:"" json:"caBundle,omitempty" toml:"caBundle,omitempty" yaml:"caBundle,omitempty"`
@@ -103,16 +104,17 @@ func (a *Configuration) SetDefaults() {
 		Auth: &VaultAuth{
 			Token: "",
 			CertAuth: &VaultCertAuth{
-				Name: "",
+				Name:       "",
+				EnginePath: "",
 			},
 			AppRole: &VaultAuthAppRole{
-				RoleID:   "",
-				SecretID: "",
-				Path:     "",
+				RoleID:     "",
+				SecretID:   "",
+				EnginePath: "",
 			},
 			Kubernetes: &VaultK8s{
-				Path: "",
-				Role: "",
+				Role:       "",
+				EnginePath: "",
 			},
 		},
 	}

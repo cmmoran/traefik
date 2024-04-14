@@ -308,13 +308,6 @@ func (m *Manager) addTCPHandlers(ctx context.Context, configs map[string]*runtim
 			continue
 		}
 
-		if routerConfig.Priority > maxUserPriority && !strings.HasSuffix(routerName, "@internal") {
-			routerErr := fmt.Errorf("the router priority %d exceeds the max user-defined priority %d", routerConfig.Priority, maxUserPriority)
-			routerConfig.AddError(routerErr, true)
-			logger.Error(routerErr)
-			continue
-		}
-
 		var handler tcp.Handler
 		if routerConfig.TLS == nil || routerConfig.TLS.Passthrough {
 			handler, err = m.buildTCPHandler(ctxRouter, routerConfig)
