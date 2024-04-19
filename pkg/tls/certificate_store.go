@@ -123,7 +123,7 @@ func (c *CertificateStore) GetCertificate(domains []string) *tls.Certificate {
 		return nil
 	}
 
-	sort.Strings(domains)
+	sort.Strings(domains[1:])
 	domainsKey := strings.Join(domains, ",")
 
 	if cert, ok := c.CertCache.Get(domainsKey); ok {

@@ -620,7 +620,7 @@ func (p *Provider) resolveDefaultCertificate(ctx context.Context, domains []stri
 
 	p.resolvingDomainsMutex.Lock()
 
-	sort.Strings(domains)
+	sort.Strings(domains[1:])
 	domainKey := strings.Join(domains, ",")
 
 	if _, ok := p.resolvingDomains[domainKey]; ok {
@@ -1021,11 +1021,11 @@ func (p *Provider) certExists(validDomains []string) bool {
 	p.certificatesMu.RLock()
 	defer p.certificatesMu.RUnlock()
 
-	sort.Strings(validDomains)
+	sort.Strings(validDomains[1:])
 
 	for _, cert := range p.certificates {
 		domains := cert.Certificate.Domain.ToStrArray()
-		sort.Strings(domains)
+		sort.Strings(domains[1:])
 		if reflect.DeepEqual(domains, validDomains) {
 			return true
 		}
