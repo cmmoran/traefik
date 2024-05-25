@@ -8,11 +8,11 @@ description: "Learn how to use IPAllowList in HTTP middleware for limiting clien
 Limiting Clients to Specific IPs
 {: .subtitle }
 
-IPAllowList accepts / refuses requests based on the client IP.
+IPAllowList limits allowed requests based on the client IP.
 
 ## Configuration Examples
 
-```yaml tab="Docker & Swarm"
+```yaml tab="Docker"
 # Accepts request from defined IP
 labels:
   - "traefik.http.middlewares.test-ipallowlist.ipallowlist.sourcerange=127.0.0.1/32, 192.168.1.7"
@@ -57,6 +57,8 @@ http:
 
 ### `sourceRange`
 
+_Required_
+
 The `sourceRange` option sets the allowed IPs (or ranges of allowed IPs by using CIDR notation).
 
 ### `ipStrategy`
@@ -83,7 +85,7 @@ The `depth` option tells Traefik to use the `X-Forwarded-For` header and take th
     | `"10.0.0.1,11.0.0.1,12.0.0.1,13.0.0.1"` | `3`     | `"11.0.0.1"` |
     | `"10.0.0.1,11.0.0.1,12.0.0.1,13.0.0.1"` | `5`     | `""`         |
 
-```yaml tab="Docker & Swarm"
+```yaml tab="Docker"
 # Allowlisting Based on `X-Forwarded-For` with `depth=2`
 labels:
   - "traefik.http.middlewares.test-ipallowlist.ipallowlist.sourcerange=127.0.0.1/32, 192.168.1.7"
@@ -149,9 +151,10 @@ http:
     | `"10.0.0.1,11.0.0.1,12.0.0.1,13.0.0.1"` | `"15.0.0.1,16.0.0.1"` | `"13.0.0.1"` |
     | `"10.0.0.1,11.0.0.1"`                   | `"10.0.0.1,11.0.0.1"` | `""`         |
 
-```yaml tab="Docker & Swarm"
+```yaml tab="Docker"
 # Exclude from `X-Forwarded-For`
 labels:
+    - "traefik.http.middlewares.test-ipallowlist.ipallowlist.sourceRange=127.0.0.1/32, 192.168.1.0/24"
     - "traefik.http.middlewares.test-ipallowlist.ipallowlist.ipstrategy.excludedips=127.0.0.1/32, 192.168.1.7"
 ```
 
@@ -163,6 +166,9 @@ metadata:
   name: test-ipallowlist
 spec:
   ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
+      - 192.168.1.0/24
     ipStrategy:
       excludedIPs:
         - 127.0.0.1/32
@@ -171,6 +177,7 @@ spec:
 
 ```yaml tab="Consul Catalog"
 # Exclude from `X-Forwarded-For`
+- "traefik.http.middlewares.test-ipallowlist.ipallowlist.sourceRange=127.0.0.1/32, 192.168.1.0/24"
 - "traefik.http.middlewares.test-ipallowlist.ipallowlist.ipstrategy.excludedips=127.0.0.1/32, 192.168.1.7"
 ```
 
@@ -180,16 +187,20 @@ http:
   middlewares:
     test-ipallowlist:
       ipAllowList:
+        sourceRange:
+         - 127.0.0.1/32
+         - 192.168.1.0/24
         ipStrategy:
           excludedIPs:
-            - "127.0.0.1/32"
-            - "192.168.1.7"
+            - 127.0.0.1/32
+            - 192.168.1.7
 ```
 
 ```toml tab="File (TOML)"
 # Exclude from `X-Forwarded-For`
 [http.middlewares]
   [http.middlewares.test-ipallowlist.ipAllowList]
+    sourceRange = ["127.0.0.1/32", "192.168.1.0/24"]
     [http.middlewares.test-ipallowlist.ipAllowList.ipStrategy]
       excludedIPs = ["127.0.0.1/32", "192.168.1.7"]
 ```

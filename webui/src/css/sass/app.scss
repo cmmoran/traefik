@@ -112,11 +112,21 @@ body {
 // Toolbar
 .q-toolbar {
   padding: 0 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 // Card
 .q-card {
   border-radius: 8px;
+}
+
+.app-card-as-chip {
+  box-shadow: none;
+
+  .q-card__section {
+    padding: 5px !important;
+  }
 }
 
 // Chips

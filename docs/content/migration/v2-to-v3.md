@@ -147,6 +147,7 @@ It is now unsupported and would prevent Traefik to start.
 ##### Remediation
 
 The `http3` option should be removed from the static configuration experimental section.
+To configure `http3`, please checkout the [entrypoint configuration documentation](https://doc.traefik.io/traefik/v3.0/routing/entrypoints/#http3_1).
 
 ### Consul provider
 
@@ -724,7 +725,7 @@ Here are two possible transition strategies:
 
 Please check the [OpenTelemetry Tracing provider documention](../observability/tracing/opentelemetry.md) for more information.
 
-#### Internal Resources Observability (AccessLogs, Metrics and Tracing)
+#### Internal Resources Observability
 
 In v3, observability for internal routers or services (e.g.: `ping@internal`) is disabled by default.
 To enable it one should use the new `addInternals` option for AccessLogs, Metrics or Tracing.
@@ -732,4 +733,4 @@ Please take a look at the observability documentation for more information:
 
 - [AccessLogs](../observability/access-logs.md#addinternals)
 - [Metrics](../observability/metrics/overview.md#addinternals)
-- [AccessLogs](../observability/tracing/overview.md#addinternals)
+- [Tracing](../observability/tracing/overview.md#addinternals)

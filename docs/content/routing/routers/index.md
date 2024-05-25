@@ -146,9 +146,9 @@ If you want to limit the router scope to a set of entry points, set the `entryPo
 
     ```bash tab="CLI"
     ## Static configuration
-    --entrypoints.web.address=:80
-    --entrypoints.websecure.address=:443
-    --entrypoints.other.address=:9090
+    --entryPoints.web.address=:80
+    --entryPoints.websecure.address=:443
+    --entryPoints.other.address=:9090
     ```
 
 ??? example "Listens to Specific EntryPoints"
@@ -204,9 +204,9 @@ If you want to limit the router scope to a set of entry points, set the `entryPo
 
     ```bash tab="CLI"
     ## Static configuration
-    --entrypoints.web.address=:80
-    --entrypoints.websecure.address=:443
-    --entrypoints.other.address=:9090
+    --entryPoints.web.address=:80
+    --entryPoints.websecure.address=:443
+    --entryPoints.other.address=:9090
     ```
 
 ### Rule
@@ -368,7 +368,7 @@ Path are always starting with a `/`, except for `PathRegexp`.
     [case-insensitively](https://en.wikipedia.org/wiki/Case_sensitivity):
 
     ```yaml
-    HostRegexp(`(?i)^/products`)
+    PathRegexp(`(?i)^/products`)
     ```
 
 #### Query and QueryRegexp
@@ -827,7 +827,7 @@ http:
 ```
 
 !!! info "Multiple Hosts in a Rule"
-    The rule ```Host(`test1.example.com`,`test2.example.com`)``` will request a certificate with the main domain `test1.example.com` and SAN `test2.example.com`.
+    The rule ```Host(`test1.example.com`) || Host(`test2.example.com`)``` will request a certificate with the main domain `test1.example.com` and SAN `test2.example.com`.
 
 #### `domains`
 
@@ -959,9 +959,9 @@ If you want to limit the router scope to a set of entry points, set the entry po
 
     ```bash tab="CLI"
     ## Static configuration
-    --entrypoints.web.address=:80
-    --entrypoints.websecure.address=:443
-    --entrypoints.other.address=:9090
+    --entryPoints.web.address=:80
+    --entryPoints.websecure.address=:443
+    --entryPoints.other.address=:9090
     ```
 
 ??? example "Listens to Specific EntryPoints"
@@ -1023,9 +1023,9 @@ If you want to limit the router scope to a set of entry points, set the entry po
 
     ```bash tab="CLI"
     ## Static configuration
-    --entrypoints.web.address=:80
-    --entrypoints.websecure.address=:443
-    --entrypoints.other.address=:9090
+    --entryPoints.web.address=:80
+    --entryPoints.websecure.address=:443
+    --entryPoints.other.address=:9090
     ```
 
 ### Rule
@@ -1610,9 +1610,9 @@ If one wants to limit the router scope to a set of EntryPoints, one should set t
 
     ```bash tab="CLI"
     ## Static configuration
-    --entrypoints.web.address=":80"
-    --entrypoints.other.address=":9090/udp"
-    --entrypoints.streaming.address=":9191/udp"
+    --entryPoints.web.address=":80"
+    --entryPoints.other.address=":9090/udp"
+    --entryPoints.streaming.address=":9191/udp"
     ```
 
 ??? example "Listens to Specific EntryPoints"
@@ -1667,9 +1667,9 @@ If one wants to limit the router scope to a set of EntryPoints, one should set t
 
     ```bash tab="CLI"
     ## Static configuration
-    --entrypoints.web.address=":80"
-    --entrypoints.other.address=":9090/udp"
-    --entrypoints.streaming.address=":9191/udp"
+    --entryPoints.web.address=":80"
+    --entryPoints.other.address=":9090/udp"
+    --entryPoints.streaming.address=":9191/udp"
     ```
 
 ### Services

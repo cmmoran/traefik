@@ -250,7 +250,7 @@ Duration to keep accepting requests before Traefik initiates the graceful shutdo
 IdleTimeout is the maximum amount duration an idle (keep-alive) connection will remain idle before closing itself. If zero, no timeout is set. (Default: ```180```)
 
 `--entrypoints.<name>.transport.respondingtimeouts.readtimeout`:  
-ReadTimeout is the maximum duration for reading the entire request, including the body. If zero, no timeout is set. (Default: ```0```)
+ReadTimeout is the maximum duration for reading the entire request, including the body. If zero, no timeout is set. (Default: ```60```)
 
 `--entrypoints.<name>.transport.respondingtimeouts.writetimeout`:  
 WriteTimeout is the maximum duration before timing out writes of the response. If zero, no timeout is set. (Default: ```0```)
@@ -387,6 +387,9 @@ Enable metrics on services. (Default: ```true```)
 `--metrics.otlp.explicitboundaries`:  
 Boundaries for latency metrics. (Default: ```0.005000, 0.010000, 0.025000, 0.050000, 0.075000, 0.100000, 0.250000, 0.500000, 0.750000, 1.000000, 2.500000, 5.000000, 7.500000, 10.000000```)
 
+`--metrics.otlp.grpc`:  
+gRPC configuration for the OpenTelemetry collector. (Default: ```false```)
+
 `--metrics.otlp.grpc.endpoint`:  
 Sets the gRPC endpoint (host:port) of the collector. (Default: ```localhost:4317```)
 
@@ -407,6 +410,9 @@ TLS insecure skip verify (Default: ```false```)
 
 `--metrics.otlp.grpc.tls.key`:  
 TLS key
+
+`--metrics.otlp.http`:  
+HTTP configuration for the OpenTelemetry collector. (Default: ```false```)
 
 `--metrics.otlp.http.endpoint`:  
 Sets the HTTP endpoint (scheme://host:port/path) of the collector. (Default: ```https://localhost:4318```)
@@ -762,6 +768,9 @@ Kubernetes label selector to use.
 `--providers.kubernetescrd.namespaces`:  
 Kubernetes namespaces.
 
+`--providers.kubernetescrd.nativelbbydefault`:  
+Defines whether to use Native Kubernetes load-balancing mode by default. (Default: ```false```)
+
 `--providers.kubernetescrd.throttleduration`:  
 Ingress refresh throttle duration (Default: ```0```)
 
@@ -785,6 +794,21 @@ Kubernetes label selector to select specific GatewayClasses.
 
 `--providers.kubernetesgateway.namespaces`:  
 Kubernetes namespaces.
+
+`--providers.kubernetesgateway.statusaddress.hostname`:  
+Hostname used for Kubernetes Gateway status address.
+
+`--providers.kubernetesgateway.statusaddress.ip`:  
+IP used to set Kubernetes Gateway status address.
+
+`--providers.kubernetesgateway.statusaddress.service`:  
+Published Kubernetes Service to copy status addresses from.
+
+`--providers.kubernetesgateway.statusaddress.service.name`:  
+Name of the Kubernetes service.
+
+`--providers.kubernetesgateway.statusaddress.service.namespace`:  
+Namespace of the Kubernetes service.
 
 `--providers.kubernetesgateway.throttleduration`:  
 Kubernetes refresh throttle duration (Default: ```0```)
@@ -828,6 +852,9 @@ Kubernetes Ingress label selector to use.
 `--providers.kubernetesingress.namespaces`:  
 Kubernetes namespaces.
 
+`--providers.kubernetesingress.nativelbbydefault`:  
+Defines whether to use Native Kubernetes load-balancing mode by default. (Default: ```false```)
+
 `--providers.kubernetesingress.throttleduration`:  
 Ingress refresh throttle duration (Default: ```0```)
 
@@ -836,6 +863,9 @@ Kubernetes bearer token (not needed for in-cluster client). It accepts either a 
 
 `--providers.nomad`:  
 Enable Nomad backend with default settings. (Default: ```false```)
+
+`--providers.nomad.allowemptyservices`:  
+Allow the creation of services without endpoints. (Default: ```false```)
 
 `--providers.nomad.constraints`:  
 Constraints is an expression that Traefik matches against the Nomad service's tags to determine whether to create route(s) for that service.
@@ -1080,6 +1110,9 @@ Defines additional attributes (key:value) on all spans.
 `--tracing.otlp`:  
 Settings for OpenTelemetry. (Default: ```false```)
 
+`--tracing.otlp.grpc`:  
+gRPC configuration for the OpenTelemetry collector. (Default: ```false```)
+
 `--tracing.otlp.grpc.endpoint`:  
 Sets the gRPC endpoint (host:port) of the collector. (Default: ```localhost:4317```)
 
@@ -1100,6 +1133,9 @@ TLS insecure skip verify (Default: ```false```)
 
 `--tracing.otlp.grpc.tls.key`:  
 TLS key
+
+`--tracing.otlp.http`:  
+HTTP configuration for the OpenTelemetry collector. (Default: ```false```)
 
 `--tracing.otlp.http.endpoint`:  
 Sets the HTTP endpoint (scheme://host:port/path) of the collector. (Default: ```https://localhost:4318```)
