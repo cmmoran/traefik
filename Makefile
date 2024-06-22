@@ -88,7 +88,7 @@ crossbinary-default: generate generate-webui
 
 .PHONY: test
 #? test: Run the unit and integration tests
-test: test-unit test-integration
+test: test-ui-unit test-unit test-integration
 
 .PHONY: test-unit
 #? test-unit: Run the unit tests
@@ -104,6 +104,13 @@ test-integration: binary
 #? test-gateway-api-conformance: Run the conformance tests
 test-gateway-api-conformance: build-image-dirty
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go test ./integration -v -test.run K8sConformanceSuite -k8sConformance $(TESTFLAGS)
+
+.PHONY: test-ui-unit
+#? test-ui-unit: Run the unit tests for the webui
+test-ui-unit:
+	$(MAKE) build-webui-image
+	docker run --rm -v "$(PWD)/webui/static":'/src/webui/static' traefik-webui yarn --cwd webui install
+	docker run --rm -v "$(PWD)/webui/static":'/src/webui/static' traefik-webui yarn --cwd webui test:unit:ci
 
 .PHONY: pull-images
 #? pull-images: Pull all Docker images to avoid timeout during integration tests
@@ -159,9 +166,9 @@ build-image-dirty:
 
 # Target for my building images for multiple architectures.
 .PHONY: custom-image-%
-mybuild-%: export DOCKER_BUILDX_ARGS := --load
-mybuild-%: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
-mybuild-%: binary-linux-amd64 binary-linux-arm64
+custom-image-%: export DOCKER_BUILDX_ARGS := --load
+custom-image-%: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
+custom-image-%: binary-linux-amd64 binary-linux-arm64
 	docker buildx build $(DOCKER_BUILDX_ARGS) -t $(DOCKER_REPO):$* --platform=$(DOCKER_BUILD_PLATFORMS) -f Dockerfile .
 
 .PHONY: docs

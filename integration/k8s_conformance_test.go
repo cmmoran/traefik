@@ -166,7 +166,7 @@ func (s *K8sConformanceSuite) TestK8sGatewayAPIConformance() {
 	k3sContainerIP, err := s.k3sContainer.ContainerIP(context.Background())
 	require.NoError(s.T(), err)
 
-	err = try.GetRequest("http://"+k3sContainerIP+":8080/api/entrypoints", 10*time.Second, try.BodyContains(`"name":"web"`))
+	err = try.GetRequest("http://"+k3sContainerIP+":9000/api/entrypoints", 10*time.Second, try.BodyContains(`"name":"web"`))
 	require.NoError(s.T(), err)
 
 	opts := ksuite.Options{
@@ -195,27 +195,26 @@ func (s *K8sConformanceSuite) TestK8sGatewayAPIConformance() {
 			LatestObservedGenerationSet:       5 * time.Second,
 			RequiredConsecutiveSuccesses:      0,
 		},
+		SupportedFeatures: sets.New(ksuite.SupportGateway,
+			ksuite.SupportGatewayPort8080,
+			ksuite.SupportHTTPRoute,
+			ksuite.SupportHTTPRouteQueryParamMatching,
+			ksuite.SupportHTTPRouteMethodMatching,
+			ksuite.SupportHTTPRoutePortRedirect,
+			ksuite.SupportHTTPRouteSchemeRedirect,
+			ksuite.SupportHTTPRouteHostRewrite,
+			ksuite.SupportHTTPRoutePathRewrite,
+			ksuite.SupportHTTPRoutePathRedirect,
+		),
+		ExemptFeatures: sets.New(
+			ksuite.SupportHTTPRouteRequestTimeout,
+			ksuite.SupportHTTPRouteBackendTimeout,
+			ksuite.SupportHTTPRouteResponseHeaderModification,
+			ksuite.SupportHTTPRouteRequestMirror,
+			ksuite.SupportHTTPRouteRequestMultipleMirrors,
+		),
 		EnableAllSupportedFeatures: false,
 		RunTest:                    *k8sConformanceRunTest,
-		// Until the feature are all supported, following tests are skipped.
-		SkipTests: []string{
-			tests.GatewayClassObservedGenerationBump.ShortName,
-			tests.GatewayWithAttachedRoutes.ShortName,
-			tests.GatewayModifyListeners.ShortName,
-			tests.GatewayInvalidTLSConfiguration.ShortName,
-			tests.HTTPRouteHostnameIntersection.ShortName,
-			tests.HTTPRouteListenerHostnameMatching.ShortName,
-			tests.HTTPRouteInvalidReferenceGrant.ShortName,
-			tests.HTTPRouteInvalidCrossNamespaceParentRef.ShortName,
-			tests.HTTPRouteInvalidParentRefNotMatchingSectionName.ShortName,
-			tests.HTTPRouteInvalidCrossNamespaceBackendRef.ShortName,
-			tests.HTTPRouteMatchingAcrossRoutes.ShortName,
-			tests.HTTPRoutePartiallyInvalidViaInvalidReferenceGrant.ShortName,
-			tests.HTTPRouteRedirectHostAndStatus.ShortName,
-			tests.HTTPRoutePathMatchOrder.ShortName,
-			tests.HTTPRouteHeaderMatching.ShortName,
-			tests.HTTPRouteReferenceGrant.ShortName,
-		},
 	}
 
 	cSuite, err := ksuite.NewExperimentalConformanceTestSuite(ksuite.ExperimentalConformanceOptions{
