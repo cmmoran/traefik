@@ -58,7 +58,7 @@ func (v *VaultStore) listenSaveAction() {
 			resp *vault.Response[schema.KvV2WriteResponse]
 		)
 		for object := range v.saveDataChan {
-			data, err = json.MarshalIndent(object, "", "  ")
+			data, err = json.Marshal(object)
 			if err != nil {
 				logger.Error().Err(err).Send()
 			}

@@ -169,7 +169,7 @@ build-image-dirty:
 custom-image-%: export DOCKER_BUILDX_ARGS := --load
 custom-image-%: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
 custom-image-%: binary-linux-amd64 binary-linux-arm64
-	docker buildx build $(DOCKER_BUILDX_ARGS) -t $(DOCKER_REPO):$* --platform=$(DOCKER_BUILD_PLATFORMS) -f Dockerfile .
+	docker buildx build $(DOCKER_BUILDX_ARGS) -t $(DOCKER_REPO):$* --platform=$(DOCKER_BUILD_PLATFORMS) --push -f Dockerfile .
 
 .PHONY: docs
 #? docs: Build documentation site
