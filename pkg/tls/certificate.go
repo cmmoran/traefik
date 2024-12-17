@@ -112,7 +112,7 @@ func (c *Certificate) AppendCertificate(certs map[string]map[string]*tls.Certifi
 	}
 
 	// Guarantees the order to produce a unique cert key.
-	sort.Strings(SANs)
+	sort.Strings(SANs[1:])
 	certKey := strings.Join(SANs, ",")
 
 	certExists := false

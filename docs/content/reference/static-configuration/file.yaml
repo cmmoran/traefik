@@ -551,6 +551,28 @@ certificatesResolvers:
         - foobar
         - foobar
       storage: foobar
+      vaultStorage:
+        url: foobar
+        tls:
+          caBundle: foobar
+          cert: foobar
+          key: foobar
+          skipVerify: true
+          serverName: foobar
+        namespace: foobar
+        enginePath: foobar
+        role: foobar
+        auth:
+          token: foobar
+          certAuth:
+            name: foobar
+          appRole:
+            roleID: foobar
+            secretID: foobar
+            path: foobar
+          kubernetes:
+            path: foobar
+            role: foobar
       keyType: foobar
       eab:
         kid: foobar
@@ -587,6 +609,28 @@ certificatesResolvers:
         - foobar
         - foobar
       storage: foobar
+      vaultStorage:
+        url: foobar
+        tls:
+          caBundle: foobar
+          cert: foobar
+          key: foobar
+          skipVerify: true
+          serverName: foobar
+        namespace: foobar
+        enginePath: foobar
+        role: foobar
+        auth:
+          token: foobar
+          certAuth:
+            name: foobar
+          appRole:
+            roleID: foobar
+            secretID: foobar
+            path: foobar
+          kubernetes:
+            path: foobar
+            role: foobar
       keyType: foobar
       eab:
         kid: foobar

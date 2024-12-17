@@ -192,6 +192,54 @@ Storage to use. (Default: ```acme.json```)
 `--certificatesresolvers.<name>.acme.tlschallenge`:  
 Activate TLS-ALPN-01 Challenge. (Default: ```true```)
 
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.path`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.roleid`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.secretid`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.certauth.name`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.path`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.role`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.token`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.enginepath`:  
+ (Default: ```acme/traefik```)
+
+`--certificatesresolvers.<name>.acme.vaultstorage.namespace`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.role`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.cabundle`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.cert`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.key`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.servername`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.skipverify`:  
+ (Default: ```false```)
+
+`--certificatesresolvers.<name>.acme.vaultstorage.url`:  
+ (Default: ```http://127.0.0.1:8200```)
+
 `--certificatesresolvers.<name>.tailscale`:  
 Enables Tailscale certificate resolution. (Default: ```true```)
 
