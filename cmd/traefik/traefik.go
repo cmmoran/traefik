@@ -445,7 +445,7 @@ func switchRouter(routerFactory *server.RouterFactory, serverEntryPointsTCP serv
 
 // initACMEProvider creates and registers acme.Provider instances corresponding to the configured ACME certificate resolvers.
 func initACMEProvider(c *static.Configuration, providerAggregator *aggregator.ProviderAggregator, tlsManager *traefiktls.Manager, httpChallengeProvider, tlsChallengeProvider challenge.Provider, routinesPool *safe.Pool) []*acme.Provider {
-	localStores := map[string]*acme.LocalStore{}
+	localStores := map[string]acme.Store{}
 
 	var resolvers []*acme.Provider
 	for name, resolver := range c.CertificatesResolvers {
@@ -453,7 +453,10 @@ func initACMEProvider(c *static.Configuration, providerAggregator *aggregator.Pr
 			continue
 		}
 
-		if localStores[resolver.ACME.Storage] == nil {
+		if resolver.ACME.VaultStorage != nil {
+			log.Info().Msgf("Traefik initializing Vault storage for url: %s", resolver.ACME.VaultStorage.Url)
+			localStores[resolver.ACME.Storage] = acme.NewVaultStore(resolver.ACME.Storage, resolver.ACME.VaultStorage, routinesPool)
+		} else if localStores[resolver.ACME.Storage] == nil {
 			localStores[resolver.ACME.Storage] = acme.NewLocalStore(resolver.ACME.Storage, routinesPool)
 		}
 

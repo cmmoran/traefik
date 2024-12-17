@@ -1,11 +1,14 @@
 package headers
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/Masterminds/sprig/v3"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
@@ -79,8 +82,36 @@ func (s *Header) modifyCustomRequestHeaders(req *http.Request) {
 			req.Host = value
 
 		default:
+			delims := s.headers.HeadersTemplateDelim
+			if delims == nil || len(delims) == 0 {
+				delims = []string{"{{", "}}"}
+			}
+			if strings.Contains(value, delims[0]) && strings.Contains(value, delims[1]) {
+				if templateResult, err := s.executeHeaderTemplate(delims, value, req); err == nil {
+					value = templateResult
+				}
+			}
 			req.Header.Set(header, value)
 		}
+	}
+}
+
+func (s *Header) executeHeaderTemplate(delims []string, tmpl string, req *http.Request) (string, error) {
+	var (
+		err       error
+		ttemplate *template.Template
+	)
+	if delims == nil || len(delims) == 0 {
+		delims = []string{"{{", "}}"}
+	}
+	if ttemplate, err = template.New("header").Delims(delims[0], delims[1]).Funcs(sprig.FuncMap()).Parse(tmpl); err != nil {
+		return tmpl, err
+	}
+	buf := new(bytes.Buffer)
+	if err = ttemplate.Execute(buf, req); err != nil {
+		return tmpl, err
+	} else {
+		return buf.String(), nil
 	}
 }
 
