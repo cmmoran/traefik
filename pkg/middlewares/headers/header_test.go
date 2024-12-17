@@ -1,6 +1,8 @@
 package headers
 
 import (
+	"fmt"
+	"github.com/google/uuid"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,9 +14,10 @@ import (
 
 func TestNewHeader_customRequestHeader(t *testing.T) {
 	testCases := []struct {
-		desc     string
-		cfg      dynamic.Headers
-		expected http.Header
+		desc            string
+		cfg             dynamic.Headers
+		initial         http.Header
+		expectedMatches func(*testing.T, http.Header) bool
 	}{
 		{
 			desc: "adds a header",
@@ -23,7 +26,136 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 					"X-Custom-Request-Header": "test_request",
 				},
 			},
-			expected: http.Header{"Foo": []string{"bar"}, "X-Custom-Request-Header": []string{"test_request"}},
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				return assert.Equal(tt, http.Header{"Foo": []string{"bar"}, "X-Custom-Request-Header": []string{"test_request"}}, h)
+			},
+		},
+		{
+			desc: "adds a header template",
+			cfg: dynamic.Headers{
+				CustomRequestHeaders: map[string]string{
+					"X-Custom-Request-Header": "[[ uuidv4 ]]",
+				},
+				HeadersTemplateDelim: []string{"[[", "]]"},
+			},
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				for k, v := range h {
+					switch k {
+					case "Foo":
+						if len(v) != 1 || v[0] != "bar" {
+							return false
+						}
+					case "X-Custom-Request-Header":
+						if len(v) != 1 {
+							_, err := uuid.Parse(v[0])
+							return assert.NoError(tt, err)
+						}
+					default:
+						return false
+					}
+				}
+
+				return true
+			},
+		},
+		{
+			desc: "adds a header template with reference to another header",
+			cfg: dynamic.Headers{
+				CustomRequestHeaders: map[string]string{
+					"X-Custom-Request-Header": "{{ .Header.Get \"x-foo-id\" }}",
+				},
+			},
+			initial: http.Header{"Foo": []string{"bar"}, "X-Foo-Id": []string{"b24b59f1-9872-4c6d-ace8-14b0c0537390"}},
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				fooId := h.Get("X-Foo-Id")
+				for k, v := range h {
+					switch k {
+					case "Foo":
+						if len(v) != 1 || v[0] != "bar" {
+							return false
+						}
+					case "X-Foo-Id":
+						if len(v) != 1 {
+							return false
+						}
+						return assert.Equal(tt, fooId, v[0])
+					case "X-Custom-Request-Header":
+						if len(v) != 1 {
+							return false
+						}
+						return assert.Equal(tt, fooId, v[0])
+					default:
+						return false
+					}
+				}
+
+				return true
+			},
+		},
+		{
+			desc: "uses a header from a currently existing header",
+			cfg: dynamic.Headers{
+				CustomRequestHeaders: map[string]string{
+					"X-Custom-Request-Header": `{{ $corrid := .Header.Get "x-foo-id" }}{{ if eq "" $corrid }}{{$corrid = uuidv4}}{{ end }}{{ printf "%s" $corrid }}`,
+				},
+			},
+			initial: http.Header{"Foo": []string{"bar"}, "X-Foo-Id": []string{"b24b59f1-9872-4c6d-ace8-14b0c0537390"}},
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				fooId := h.Get("X-Foo-Id")
+				for k, v := range h {
+					switch k {
+					case "Foo":
+						if len(v) != 1 || v[0] != "bar" {
+							return false
+						}
+					case "X-Foo-Id":
+						if len(v) != 1 {
+							return false
+						}
+						return assert.Equal(tt, fooId, v[0])
+					case "X-Custom-Request-Header":
+						if len(v) != 1 {
+							return false
+						}
+						return assert.Equal(tt, fooId, v[0])
+					default:
+						return false
+					}
+				}
+
+				return true
+			},
+		},
+		{
+			desc: "adds a header for a header that does not exist",
+			cfg: dynamic.Headers{
+				CustomRequestHeaders: map[string]string{
+					"X-Custom-Request-Header": `{{ $corrid := .Header.Get "x-foo-id" }}{{ if eq "" $corrid }}{{$corrid = uuidv4}}{{ end }}{{ printf "%s" $corrid }}`,
+				},
+			},
+			initial: http.Header{"Foo": []string{"bar"}},
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				fooId := h.Get("X-Foo-Id")
+				fmt.Println(fooId)
+				for k, v := range h {
+					switch k {
+					case "Foo":
+						if len(v) != 1 || v[0] != "bar" {
+							return false
+						}
+					case "X-Custom-Request-Header":
+						if len(v) != 1 {
+							return false
+						}
+						_, err := uuid.Parse(v[0])
+						return err == nil
+					default:
+						return false
+					}
+				}
+
+				return true
+			},
 		},
 		{
 			desc: "delete a header",
@@ -34,8 +166,10 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 					"Foo":                     "",
 				},
 			},
-			expected: http.Header{
-				"X-Forwarded-For": nil,
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				return assert.Equal(t, http.Header{
+					"X-Forwarded-For": nil,
+				}, h)
 			},
 		},
 		{
@@ -45,7 +179,9 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 					"Foo": "test",
 				},
 			},
-			expected: http.Header{"Foo": []string{"test"}},
+			expectedMatches: func(tt *testing.T, h http.Header) bool {
+				return assert.Equal(t, http.Header{"Foo": []string{"test"}}, h)
+			},
 		},
 	}
 
@@ -59,14 +195,18 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-			req.Header.Set("Foo", "bar")
+			if test.initial == nil || len(test.initial) == 0 {
+				req.Header.Set("Foo", "bar")
+			} else {
+				req.Header = test.initial
+			}
 
 			rw := httptest.NewRecorder()
 
 			mid.ServeHTTP(rw, req)
 
 			assert.Equal(t, http.StatusOK, rw.Code)
-			assert.Equal(t, test.expected, req.Header)
+			assert.True(t, test.expectedMatches(t, req.Header))
 		})
 	}
 }
