@@ -299,6 +299,8 @@ type ClientTLS struct {
 type Headers struct {
 	// CustomRequestHeaders defines the header names and values to apply to the request.
 	CustomRequestHeaders map[string]string `json:"customRequestHeaders,omitempty" toml:"customRequestHeaders,omitempty" yaml:"customRequestHeaders,omitempty" export:"true"`
+	// HeadersTemplateDelim defines the template delim character(s), default: [ "{{", "}}" ]
+	HeadersTemplateDelim []string `json:"headersTemplateDelim,omitempty" toml:"headersTemplateDelim,omitempty" yaml:"headersTemplateDelim,omitempty" export:"true"`
 	// CustomResponseHeaders defines the header names and values to apply to the response.
 	CustomResponseHeaders map[string]string `json:"customResponseHeaders,omitempty" toml:"customResponseHeaders,omitempty" yaml:"customResponseHeaders,omitempty" export:"true"`
 
