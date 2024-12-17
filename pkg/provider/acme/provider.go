@@ -38,17 +38,54 @@ import (
 
 const resolverSuffix = ".acme"
 
+type VaultK8s struct {
+	Role       string `description:"" json:"role,omitempty" toml:"role,omitempty" yaml:"role,omitempty"`
+	EnginePath string `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
+}
+type VaultAuthAppRole struct {
+	RoleID     string `description:"" json:"roleID,omitempty" toml:"roleID,omitempty" yaml:"roleID,omitempty"`
+	SecretID   string `description:"" json:"secretID,omitempty" toml:"secretID,omitempty" yaml:"secretID,omitempty"`
+	EnginePath string `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
+}
+type VaultAuth struct {
+	Token      string            `description:"" json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
+	CertAuth   *VaultCertAuth    `description:"" json:"certAuth,omitempty" toml:"certAuth,omitempty" yaml:"certAuth,omitempty"`
+	AppRole    *VaultAuthAppRole `description:"" json:"appRole,omitempty" toml:"appRole,omitempty" yaml:"appRole,omitempty"`
+	Kubernetes *VaultK8s         `description:"" json:"kubernetes,omitempty" toml:"kubernetes,omitempty" yaml:"kubernetes,omitempty"`
+}
+type VaultCertAuth struct {
+	Name       string `description:"" json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty"`
+	EnginePath string `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
+}
+type VaultTls struct {
+	CABundle   string `description:"" json:"caBundle,omitempty" toml:"caBundle,omitempty" yaml:"caBundle,omitempty"`
+	Cert       string `description:"" json:"cert,omitempty" toml:"cert,omitempty" yaml:"cert,omitempty"`
+	Key        string `description:"" json:"key,omitempty" toml:"key,omitempty" yaml:"key,omitempty"`
+	SkipVerify bool   `description:"" json:"skipVerify,omitempty" toml:"skipVerify,omitempty" yaml:"skipVerify,omitempty"`
+	ServerName string `description:"" json:"serverName,omitempty" toml:"serverName,omitempty" yaml:"serverName,omitempty"`
+}
+
+type VaultConfig struct {
+	Url        string     `description:"" json:"url,omitempty" toml:"url,omitempty" yaml:"url,omitempty"`
+	Tls        *VaultTls  `description:"" json:"tls,omitempty" toml:"tls,omitempty" yaml:"tls,omitempty"`
+	Namespace  string     `description:"" json:"namespace,omitempty" toml:"namespace,omitempty" yaml:"namespace,omitempty"`
+	EnginePath string     `description:"" json:"enginePath,omitempty" toml:"enginePath,omitempty" yaml:"enginePath,omitempty"`
+	Role       string     `description:"" json:"role,omitempty" toml:"role,omitempty" yaml:"role,omitempty"`
+	Auth       *VaultAuth `description:"" json:"auth,omitempty" toml:"auth,omitempty" yaml:"auth,omitempty"`
+}
+
 // Configuration holds ACME configuration provided by users.
 type Configuration struct {
-	Email                string   `description:"Email address used for registration." json:"email,omitempty" toml:"email,omitempty" yaml:"email,omitempty"`
-	CAServer             string   `description:"CA server to use." json:"caServer,omitempty" toml:"caServer,omitempty" yaml:"caServer,omitempty"`
-	PreferredChain       string   `description:"Preferred chain to use." json:"preferredChain,omitempty" toml:"preferredChain,omitempty" yaml:"preferredChain,omitempty" export:"true"`
-	Profile              string   `description:"Certificate profile to use." json:"profile,omitempty" toml:"profile,omitempty" yaml:"profile,omitempty" export:"true"`
-	EmailAddresses       []string `description:"CSR email addresses to use." json:"emailAddresses,omitempty" toml:"emailAddresses,omitempty" yaml:"emailAddresses,omitempty"`
-	Storage              string   `description:"Storage to use." json:"storage,omitempty" toml:"storage,omitempty" yaml:"storage,omitempty" export:"true"`
-	KeyType              string   `description:"KeyType used for generating certificate private key. Allow value 'EC256', 'EC384', 'RSA2048', 'RSA4096', 'RSA8192'." json:"keyType,omitempty" toml:"keyType,omitempty" yaml:"keyType,omitempty" export:"true"`
-	EAB                  *EAB     `description:"External Account Binding to use." json:"eab,omitempty" toml:"eab,omitempty" yaml:"eab,omitempty"`
-	CertificatesDuration int      `description:"Certificates' duration in hours." json:"certificatesDuration,omitempty" toml:"certificatesDuration,omitempty" yaml:"certificatesDuration,omitempty" export:"true"`
+	Email                string       `description:"Email address used for registration." json:"email,omitempty" toml:"email,omitempty" yaml:"email,omitempty"`
+	CAServer             string       `description:"CA server to use." json:"caServer,omitempty" toml:"caServer,omitempty" yaml:"caServer,omitempty"`
+	PreferredChain       string       `description:"Preferred chain to use." json:"preferredChain,omitempty" toml:"preferredChain,omitempty" yaml:"preferredChain,omitempty" export:"true"`
+	Profile              string       `description:"Certificate profile to use." json:"profile,omitempty" toml:"profile,omitempty" yaml:"profile,omitempty" export:"true"`
+	EmailAddresses       []string     `description:"CSR email addresses to use." json:"emailAddresses,omitempty" toml:"emailAddresses,omitempty" yaml:"emailAddresses,omitempty"`Storage              string       `description:"Storage to use." json:"storage,omitempty" toml:"storage,omitempty" yaml:"storage,omitempty" export:"true"`
+	Storage              string       `description:"Storage to use." json:"storage,omitempty" toml:"storage,omitempty" yaml:"storage,omitempty" export:"true"`
+	VaultStorage         *VaultConfig `description:"Use VaultStorage." json:"vaultStorage,omitempty" toml:"vaultStorage,omitempty" yaml:"vaultStorage,omitempty" export:"true"`
+	KeyType              string       `description:"KeyType used for generating certificate private key. Allow value 'EC256', 'EC384', 'RSA2048', 'RSA4096', 'RSA8192'." json:"keyType,omitempty" toml:"keyType,omitempty" yaml:"keyType,omitempty" export:"true"`
+	EAB                  *EAB         `description:"External Account Binding to use." json:"eab,omitempty" toml:"eab,omitempty" yaml:"eab,omitempty"`
+	CertificatesDuration int          `description:"Certificates' duration in hours." json:"certificatesDuration,omitempty" toml:"certificatesDuration,omitempty" yaml:"certificatesDuration,omitempty" export:"true"`
 
 	ClientTimeout               ptypes.Duration `description:"Timeout for a complete HTTP transaction with the ACME server." json:"clientTimeout,omitempty" toml:"clientTimeout,omitempty" yaml:"clientTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 	ClientResponseHeaderTimeout ptypes.Duration `description:"Timeout for receiving the response headers when communicating with the ACME server." json:"clientResponseHeaderTimeout,omitempty" toml:"clientResponseHeaderTimeout,omitempty" yaml:"clientResponseHeaderTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
@@ -66,6 +103,35 @@ type Configuration struct {
 func (a *Configuration) SetDefaults() {
 	a.CAServer = lego.LEDirectoryProduction
 	a.Storage = "acme.json"
+	a.VaultStorage = &VaultConfig{
+		Url: "http://127.0.0.1:8200",
+		Tls: &VaultTls{
+			CABundle:   "",
+			Cert:       "",
+			Key:        "",
+			SkipVerify: false,
+			ServerName: "",
+		},
+		Namespace:  "",
+		EnginePath: "acme/traefik",
+		Role:       "",
+		Auth: &VaultAuth{
+			Token: "",
+			CertAuth: &VaultCertAuth{
+				Name:       "",
+				EnginePath: "",
+			},
+			AppRole: &VaultAuthAppRole{
+				RoleID:     "",
+				SecretID:   "",
+				EnginePath: "",
+			},
+			Kubernetes: &VaultK8s{
+				Role:       "",
+				EnginePath: "",
+			},
+		},
+	}
 	a.KeyType = "RSA4096"
 	a.CertificatesDuration = 3 * 30 * 24 // 90 Days
 	a.ClientTimeout = ptypes.Duration(2 * time.Minute)
@@ -161,7 +227,7 @@ func (p *Provider) ListenConfiguration(config dynamic.Configuration) {
 func (p *Provider) Init() error {
 	logger := log.With().Str(logs.ProviderName, p.ResolverName+resolverSuffix).Logger()
 
-	if len(p.Configuration.Storage) == 0 {
+	if p.Configuration.VaultStorage == nil && len(p.Configuration.Storage) == 0 {
 		return errors.New("unable to initialize ACME provider with no storage location for the certificates")
 	}
 
@@ -651,11 +717,8 @@ func (p *Provider) resolveDefaultCertificate(ctx context.Context, domains []stri
 
 	p.resolvingDomainsMutex.Lock()
 
-	sortedDomains := make([]string, len(domains))
-	copy(sortedDomains, domains)
-	sort.Strings(sortedDomains)
-
-	domainKey := strings.Join(sortedDomains, ",")
+	sort.Strings(domains[1:])
+	domainKey := strings.Join(domains, ",")
 
 	if _, ok := p.resolvingDomains[domainKey]; ok {
 		p.resolvingDomainsMutex.Unlock()
@@ -1061,14 +1124,12 @@ func (p *Provider) certExists(validDomains []string) bool {
 	p.certificatesMu.RLock()
 	defer p.certificatesMu.RUnlock()
 
-	sortedDomains := make([]string, len(validDomains))
-	copy(sortedDomains, validDomains)
-	sort.Strings(sortedDomains)
+	sort.Strings(validDomains[1:])
 
 	for _, cert := range p.certificates {
 		domains := cert.Certificate.Domain.ToStrArray()
-		sort.Strings(domains)
-		if reflect.DeepEqual(domains, sortedDomains) {
+		sort.Strings(domains[1:])
+		if reflect.DeepEqual(domains, validDomains) {
 			return true
 		}
 	}

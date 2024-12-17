@@ -139,13 +139,14 @@ validate: lint validate-files
 # Target for building images for multiple architectures.
 .PHONY: multi-arch-image-%
 multi-arch-image-%: binary-linux-amd64 binary-linux-arm64
-	docker buildx build $(DOCKER_BUILDX_ARGS) -t traefik/traefik:$* --platform=$(DOCKER_BUILD_PLATFORMS) -f Dockerfile .
+	docker buildx build $(DOCKER_BUILDX_ARGS) -t $(DOCKER_REPO):$* --platform=$(DOCKER_BUILD_PLATFORMS) -f Dockerfile .
 
 
 .PHONY: build-image
 #? build-image: Clean up static directory and build a Docker Traefik image
 build-image: export DOCKER_BUILDX_ARGS := --load
 build-image: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
+build-image: export DOCKER_REPO := traefik/traefik
 build-image: clean-webui
 	@$(MAKE) multi-arch-image-latest
 
@@ -155,6 +156,13 @@ build-image-dirty: export DOCKER_BUILDX_ARGS := --load
 build-image-dirty: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
 build-image-dirty:
 	@$(MAKE) multi-arch-image-latest
+
+# Target for my building images for multiple architectures.
+.PHONY: custom-image-%
+custom-image-%: export DOCKER_BUILDX_ARGS := --load
+custom-image-%: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
+custom-image-%: binary-linux-amd64 binary-linux-arm64
+	docker buildx build $(DOCKER_BUILDX_ARGS) -t $(DOCKER_REPO):$* --platform=$(DOCKER_BUILD_PLATFORMS) --push -f Dockerfile .
 
 .PHONY: docs
 #? docs: Build documentation site
