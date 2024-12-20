@@ -12,27 +12,41 @@ type Handler struct {
 	ManualRouting         bool   `description:"Manual routing" json:"manualRouting,omitempty" toml:"manualRouting,omitempty" yaml:"manualRouting,omitempty" export:"true"`
 	TerminatingStatusCode int    `description:"Terminating status code" json:"terminatingStatusCode,omitempty" toml:"terminatingStatusCode,omitempty" yaml:"terminatingStatusCode,omitempty" export:"true"`
 	terminating           bool
+	ctxChan               chan bool
+	ctx                   context.Context
 }
 
 // SetDefaults sets the default values.
 func (h *Handler) SetDefaults() {
 	h.EntryPoint = "traefik"
 	h.TerminatingStatusCode = http.StatusServiceUnavailable
+	h.ctxChan = make(chan bool, 1)
 }
 
 // WithContext causes the ping endpoint to serve non 200 responses.
 func (h *Handler) WithContext(ctx context.Context) {
+	if h.ctx != nil {
+		h.ctxChan <- true
+	}
 	go func() {
-		<-ctx.Done()
-		h.terminating = true
+		h.ctx = ctx
+		select {
+		case <-h.ctx.Done():
+			h.terminating = true
+			close(h.ctxChan)
+			return
+		case <-h.ctxChan:
+			h.terminating = false
+			return
+		}
 	}()
 }
 
-func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+func (h *Handler) ServeHTTP(response http.ResponseWriter, _ *http.Request) {
 	statusCode := http.StatusOK
 	if h.terminating {
 		statusCode = h.TerminatingStatusCode
 	}
 	response.WriteHeader(statusCode)
-	fmt.Fprint(response, http.StatusText(statusCode))
+	_, _ = fmt.Fprint(response, http.StatusText(statusCode))
 }

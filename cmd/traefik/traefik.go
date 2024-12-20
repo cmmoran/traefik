@@ -5,6 +5,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog"
 	"io"
 	stdlog "log"
 	"maps"
@@ -13,6 +15,7 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,8 +55,11 @@ import (
 )
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	// traefik config inits
 	tConfig := cmd.NewTraefikConfiguration()
+
+	configurationChan := make(chan *static.Configuration, 1)
 
 	loaders := []cli.ResourceLoader{&tcli.DeprecationLoader{}, &tcli.FileLoader{}, &tcli.FlagLoader{}, &tcli.EnvLoader{}}
 
@@ -64,11 +70,68 @@ Complete documentation is available at https://traefik.io`,
 		Configuration: tConfig,
 		Resources:     loaders,
 		Run: func(_ []string) error {
-			return runCmd(&tConfig.Configuration)
+			return runCmd(configurationChan)
 		},
 	}
 
-	err := cmdTraefik.AddCommand(healthcheck.NewCmd(&tConfig.Configuration, loaders))
+	raftLoader := []cli.ResourceLoader{&tcli.RaftLoader{ResourceLoaders: loaders}}
+	raftCmd := &cli.Command{
+		Name:          "raft",
+		Description:   "raft related commands",
+		Configuration: tConfig,
+		Resources:     raftLoader,
+		Run: func(_ []string) error {
+			tconfiguration := &tConfig.Configuration
+			if raftNode, ok := static.GetRaftStore(tConfig.Raft.NodeID); ok {
+				go raftNode.OnLeader(func(id raft.ServerID, addr raft.ServerAddress) {
+					if raftNode.IsLeader() {
+						log.Info().Msgf("Leader elected: %s", id)
+						log.Info().Any("config", tconfiguration).Msgf("Leader, applying configuration")
+						if err := raftNode.ApplyConfig(tconfiguration); err != nil {
+							log.Err(err).Msg("unable to apply leader static configuration to raft")
+							return
+						}
+						go func() {
+							log.Info().Msgf("Applying 8090 port in 10 seconds.")
+							time.Sleep(10 * time.Second)
+							configuration, _ := raftNode.GetConfig()
+							configuration.EntryPoints["web"].Address = ":8090"
+							log.Info().Msgf("Applying 8090 port NOW!")
+							if err := raftNode.ApplyConfig(configuration); err != nil {
+								log.Err(err).Msg("unable to apply leader static configuration to raft")
+							}
+						}()
+						configurationChan <- tconfiguration
+					} else {
+						log.Info().Msgf("Leader changed: %s", id)
+						if raftStaticConfig, err := raftNode.GetConfig(); err != nil {
+							log.Err(err).Msg("unable to get leader static configuration from raft")
+							return
+						} else {
+							log.Info().Any("config", raftStaticConfig).Msgf("Not Leader, applying leader configuration")
+							configurationChan <- raftStaticConfig
+						}
+					}
+				})
+				go raftNode.OnChange(func(config *static.Configuration) {
+					configurationChan <- config
+				})
+				if err := raftNode.WaitForLeader(); err != nil {
+					log.Err(err).Msg("unable to wait for raft leader")
+					return err
+				}
+			}
+
+			return runCmd(configurationChan)
+		},
+	}
+	err := cmdTraefik.AddCommand(raftCmd)
+	if err != nil {
+		stdlog.Println(err)
+		os.Exit(1)
+	}
+
+	err = cmdTraefik.AddCommand(healthcheck.NewCmd(&tConfig.Configuration, loaders))
 	if err != nil {
 		stdlog.Println(err)
 		os.Exit(1)
@@ -89,16 +152,49 @@ Complete documentation is available at https://traefik.io`,
 	logrus.Exit(0)
 }
 
-func runCmd(staticConfiguration *static.Configuration) error {
+func runCmd(staticConfigurationChan chan *static.Configuration) error {
+	var (
+		svr *server.Server
+		err error
+	)
+	defer func() {
+		close(staticConfigurationChan)
+	}()
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
+	runMu := sync.Mutex{}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case staticConfiguration := <-staticConfigurationChan:
+			runMu.Lock()
+			if svr != nil {
+				log.Info().Msg("Shutting down current running server...")
+				svr.Stop()
+				svr.Close()
+				log.Info().Msg("Shut down current running server.")
+			}
+			log.Info().Any("configuration", staticConfiguration).Msg("Configuration received from channel")
+			if svr, err = doRunCmd(staticConfiguration); err != nil {
+				runMu.Unlock()
+				return err
+			}
+			runMu.Unlock()
+		}
+	}
+}
+
+func doRunCmd(staticConfiguration *static.Configuration) (*server.Server, error) {
 	if err := setupLogger(staticConfiguration); err != nil {
-		return fmt.Errorf("setting up logger: %w", err)
+		return nil, fmt.Errorf("setting up logger: %w", err)
 	}
 
 	http.DefaultTransport.(*http.Transport).Proxy = http.ProxyFromEnvironment
 
 	staticConfiguration.SetEffectiveConfiguration()
 	if err := staticConfiguration.ValidateConfiguration(); err != nil {
-		return err
+		return nil, err
 	}
 
 	log.Info().Str("version", version.Version).
@@ -120,7 +216,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 
 	svr, err := setupServer(staticConfiguration)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -130,7 +226,12 @@ func runCmd(staticConfiguration *static.Configuration) error {
 	}
 
 	svr.Start(ctx)
-	defer svr.Close()
+	//defer func() {
+	//	go func() {
+	//		svr.Wait()
+	//		svr.Close()
+	//	}()
+	//}()
 
 	sent, err := daemon.SdNotify(false, "READY=1")
 	if !sent && err != nil {
@@ -163,9 +264,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 		})
 	}
 
-	svr.Wait()
-	log.Info().Msg("Shutting down")
-	return nil
+	return svr, nil
 }
 
 func setupServer(staticConfiguration *static.Configuration) (*server.Server, error) {
@@ -230,8 +329,8 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 
 	// Plugins
 	pluginLogger := log.Ctx(ctx).With().Logger()
-	hasPlugins := staticConfiguration.Experimental != nil && (staticConfiguration.Experimental.Plugins != nil || staticConfiguration.Experimental.LocalPlugins != nil)
-	if hasPlugins {
+	doesHavePlugins := hasPlugins(staticConfiguration) || hasLocalPlugins(staticConfiguration)
+	if doesHavePlugins {
 		pluginsList := slices.Collect(maps.Keys(staticConfiguration.Experimental.Plugins))
 		pluginsList = append(pluginsList, slices.Collect(maps.Keys(staticConfiguration.Experimental.LocalPlugins))...)
 
@@ -245,7 +344,7 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 	}
 	if err != nil {
 		pluginLogger.Err(err).Msg("Plugins are disabled because an error has occurred.")
-	} else if hasPlugins {
+	} else if doesHavePlugins {
 		pluginLogger.Info().Msg("Plugins loaded.")
 	}
 
@@ -256,14 +355,14 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 			break
 		}
 
-		p, err := pluginBuilder.BuildProvider(name, conf)
-		if err != nil {
-			return nil, fmt.Errorf("plugin: failed to build provider: %w", err)
+		p, pluginErr := pluginBuilder.BuildProvider(name, conf)
+		if pluginErr != nil {
+			return nil, fmt.Errorf("plugin: failed to build provider: %w", pluginErr)
 		}
 
-		err = providerAggregator.AddProvider(p)
-		if err != nil {
-			return nil, fmt.Errorf("plugin: failed to add provider: %w", err)
+		pluginErr = providerAggregator.AddProvider(p)
+		if pluginErr != nil {
+			return nil, fmt.Errorf("plugin: failed to add provider: %w", pluginErr)
 		}
 	}
 
@@ -314,8 +413,8 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 
 	// TLS
 	watcher.AddListener(func(conf dynamic.Configuration) {
-		ctx := context.Background()
-		tlsManager.UpdateConfigs(ctx, conf.TLS.Stores, conf.TLS.Options, conf.TLS.Certificates)
+		tlsCtx := context.Background()
+		tlsManager.UpdateConfigs(tlsCtx, conf.TLS.Stores, conf.TLS.Options, conf.TLS.Certificates)
 
 		gauge := metricsRegistry.TLSCertsNotAfterTimestampGauge()
 		for _, certificate := range tlsManager.GetServerCertificates() {

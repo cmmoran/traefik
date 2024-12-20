@@ -10,8 +10,18 @@
 # Global configuration
 ################################################################
 global:
-  checkNewVersion: true
-  sendAnonymousUsage: true
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+raft:
+  dataDir: .raft
+  nodeId: local-0
+  bindAddress: 10.10.1.7:8880
+  peers:
+    - id: local-0
+      address: 10.10.1.7:8880
+    - id: local-1
+      address: 10.10.1.51:8880
 
 ################################################################
 # EntryPoints configuration
@@ -23,10 +33,9 @@ global:
 #
 entryPoints:
   web:
-    address: :80
-
+    address: :8099
   websecure:
-    address: :443
+    address: :8443
 
 ################################################################
 # Traefik logs configuration
@@ -37,13 +46,13 @@ entryPoints:
 #
 # Optional
 #
-#log:
+log:
   # Log level
   #
   # Optional
   # Default: "ERROR"
   #
-#  level: DEBUG
+  level: DEBUG
 
   # Sets the filepath for the traefik log. If not specified, stdout will be used.
   # Intermediate directories are created if necessary.
@@ -58,7 +67,7 @@ entryPoints:
   # Optional
   # Default: "common"
   #
-#  format: json
+  format: json
 
 ################################################################
 # Access logs configuration
@@ -70,7 +79,7 @@ entryPoints:
 #
 # Optional
 #
-#accessLog:
+accessLog:
   # Sets the file path for the access log. If not specified, stdout will be used.
   # Intermediate directories are created if necessary.
   #
@@ -84,7 +93,7 @@ entryPoints:
   # Optional
   # Default: "common"
   #
-#  format: json
+  format: json
 
 ################################################################
 # API and dashboard configuration
@@ -94,20 +103,21 @@ entryPoints:
 #
 # Optional
 #
-#api:
+api:
   # Enable the API in insecure mode
   #
   # Optional
   # Default: false
   #
-#  insecure: true
+  insecure: true
 
   # Enabled Dashboard
   #
   # Optional
   # Default: true
   #
-#  dashboard: false
+  dashboard: true
+  disableDashboardAd: true
 
 ################################################################
 # Ping configuration

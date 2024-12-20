@@ -24,6 +24,7 @@ type Server struct {
 	stopChan chan bool
 
 	routinesPool *safe.Pool
+	ctx          context.Context
 }
 
 // NewServer returns an initialized Server.
@@ -46,8 +47,9 @@ func NewServer(routinesPool *safe.Pool, entryPoints TCPEntryPoints, entryPointsU
 // Start starts the server and Stop/Close it when context is Done.
 func (s *Server) Start(ctx context.Context) {
 	go func() {
-		<-ctx.Done()
-		logger := log.Ctx(ctx)
+		s.ctx = ctx
+		<-s.ctx.Done()
+		logger := log.Ctx(s.ctx)
 		logger.Info().Msg("I have to go...")
 		logger.Info().Msg("Stopping server gracefully")
 		s.Stop()
@@ -58,6 +60,10 @@ func (s *Server) Start(ctx context.Context) {
 	s.watcher.Start()
 
 	s.routinesPool.GoCtx(s.listenSignals)
+}
+
+func (s *Server) Context() context.Context {
+	return s.ctx
 }
 
 // Wait blocks until the server shutdown.

@@ -52,7 +52,7 @@ func (f *FileLoader) Load(args []string, cmd *cli.Command) (bool, error) {
 		return false, nil
 	}
 
-	log.Printf("Configuration loaded from file: %s", configFile)
+	log.Debug().Msgf("Configuration loaded from file: %s", configFile)
 
 	content, _ := os.ReadFile(configFile)
 	log.Debug().Str("configFile", configFile).Bytes("content", content).Send()

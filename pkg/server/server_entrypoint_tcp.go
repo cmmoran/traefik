@@ -692,7 +692,7 @@ func createHTTPServer(ctx context.Context, ln net.Listener, configuration *stati
 	listener := newHTTPForwarder(ln)
 	go func() {
 		err := serverHTTP.Serve(listener)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) && !strings.Contains(err.Error(), "use of closed network connection") {
 			log.Ctx(ctx).Error().Err(err).Msg("Error while starting server")
 		}
 	}()

@@ -10,6 +10,7 @@ import (
 // TraefikCmdConfiguration wraps the static configuration and extra parameters.
 type TraefikCmdConfiguration struct {
 	static.Configuration `export:"true"`
+	Raft                 *static.RaftOptions `description:"Enable Raft configuration backend." export:"true"`
 	// ConfigFile is the path to the configuration file.
 	ConfigFile string `description:"Configuration file to use. If specified all other flags are ignored." export:"true"`
 }
@@ -17,6 +18,7 @@ type TraefikCmdConfiguration struct {
 // NewTraefikConfiguration creates a TraefikCmdConfiguration with default values.
 func NewTraefikConfiguration() *TraefikCmdConfiguration {
 	return &TraefikCmdConfiguration{
+		Raft: nil,
 		Configuration: static.Configuration{
 			Global: &static.Global{
 				CheckNewVersion: true,

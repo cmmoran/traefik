@@ -123,6 +123,23 @@ type Spiffe struct {
 	TrustDomain string   `description:"Defines the allowed SPIFFE trust domain." json:"trustDomain,omitempty" toml:"trustDomain,omitempty" yaml:"trustDomain,omitempty"`
 }
 
+type RaftServer struct {
+	Suffrage int    `description:"Determines whether the server gets a vote." json:"suffrage,omitempty" toml:"suffrage,omitempty" yaml:"suffrage,omitempty" export:"true"`
+	ID       string `description:"Unique string identifying this server for all time." json:"id,omitempty" toml:"id,omitempty" yaml:"id,omitempty" export:"true"`
+	Address  string `description:"Network address that a transport can contact." json:"address,omitempty" toml:"address,omitempty" yaml:"address,omitempty" export:"true"`
+}
+
+type RaftOptions struct {
+	Bootstrap        bool            `description:"Bootstrap the cluster." json:"bootstrap,omitempty" toml:"bootstrap,omitempty" yaml:"bootstrap,omitempty" export:"true"`
+	DataDir          string          `description:"Path to the Raft data directory." json:"dataDir,omitempty" toml:"dataDir,omitempty" yaml:"dataDir,omitempty" export:"true"`
+	NodeID           string          `description:"Unique identifier for this node." json:"nodeID,omitempty" toml:"nodeID,omitempty" yaml:"nodeID,omitempty" export:"true"`
+	BindAddress      string          `description:"Defines the address to bind to for the Raft server." json:"bindAddress,omitempty" toml:"bindAddress,omitempty" yaml:"bindAddress,omitempty" export:"true"`
+	AdvertiseAddress string          `description:"Defines the address to advertise for the Raft server." json:"advertiseAddress,omitempty" toml:"advertiseAddress,omitempty" yaml:"advertiseAddress,omitempty" export:"true"`
+	Peers            []RaftServer    `description:"Defines the peers to connect to." json:"peers,omitempty" toml:"peers,omitempty" yaml:"peers,omitempty" export:"true"`
+	TcpTimeout       ptypes.Duration `description:"Defines the timeout for TCP connections." json:"tcpTimeout,omitempty" toml:"tcpTimeout,omitempty" yaml:"tcpTimeout,omitempty" export:"true"`
+	SnapshotMax      int             `description:"Maximum number of entries in a snapshot." json:"snapshotMax,omitempty" toml:"snapshotMax,omitempty" yaml:"snapshotMax,omitempty" export:"true"`
+}
+
 // TCPServersTransport options to configure communication between Traefik and the servers.
 type TCPServersTransport struct {
 	DialKeepAlive ptypes.Duration `description:"Defines the interval between keep-alive probes for an active network connection. If zero, keep-alive probes are sent with a default value (currently 15 seconds), if supported by the protocol and operating system. Network protocols or operating systems that do not support keep-alives ignore this field. If negative, keep-alive probes are disabled" json:"dialKeepAlive,omitempty" toml:"dialKeepAlive,omitempty" yaml:"dialKeepAlive,omitempty" export:"true"`
