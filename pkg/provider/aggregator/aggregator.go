@@ -30,9 +30,9 @@ type throttled interface {
 // provider implements the throttled interface.
 func maybeThrottledProvide(prd provider.Provider, defaultDuration time.Duration) func(chan<- dynamic.Message, *safe.Pool) error {
 	providerThrottleDuration := defaultDuration
-	if throttled, ok := prd.(throttled); ok {
+	if throttledProvider, ok := prd.(throttled); ok {
 		// per-provider throttling
-		providerThrottleDuration = throttled.ThrottleDuration()
+		providerThrottleDuration = throttledProvider.ThrottleDuration()
 	}
 
 	if providerThrottleDuration == 0 {
@@ -199,7 +199,7 @@ func (p *ProviderAggregator) launchProvider(configurationChan chan<- dynamic.Mes
 		log.Debug().Err(err).Msgf("Cannot marshal the provider configuration %T", prd)
 	}
 
-	log.Info().Msgf("Starting provider %T", prd)
+	log.Info().Any("provider", prd).Msgf("Starting provider")
 	log.Debug().RawJSON("config", []byte(jsonConf)).Msgf("%T provider configuration", prd)
 
 	if err := maybeThrottledProvide(prd, p.providersThrottleDuration)(configurationChan, pool); err != nil {

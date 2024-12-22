@@ -311,7 +311,9 @@ export default defineComponent({
       timeOutEntryGetAll: null,
       timeOutOverviewAll: null,
       intervalRefresh: null,
-      intervalRefreshTime: 5000
+      intervalEntriesRefresh: null,
+      intervalRefreshTime: 5000,
+      intervalEntriesRefreshTime: 10000
     }
   },
   computed: {
@@ -336,9 +338,11 @@ export default defineComponent({
   created () {
     this.fetchAll()
     this.intervalRefresh = setInterval(this.fetchOverview, this.intervalRefreshTime)
+    this.intervalEntriesRefresh = setInterval(this.fetchEntries, this.intervalEntriesRefreshTime)
   },
   beforeUnmount () {
     clearInterval(this.intervalRefresh)
+    clearInterval(this.intervalEntriesRefresh)
     clearTimeout(this.timeOutEntryGetAll)
     clearTimeout(this.timeOutOverviewAll)
     this.$store.commit('entrypoints/getAllClear')

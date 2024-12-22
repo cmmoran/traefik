@@ -44,14 +44,7 @@ func NewServer(routinesPool *safe.Pool, entryPoints TCPEntryPoints, entryPointsU
 }
 
 // Start starts the server and Stop/Close it when context is Done.
-func (s *Server) Start(ctx context.Context) {
-	go func() {
-		<-ctx.Done()
-		logger := log.Ctx(ctx)
-		logger.Info().Msg("I have to go...")
-		logger.Info().Msg("Stopping server gracefully")
-		s.Stop()
-	}()
+func (s *Server) Start() {
 
 	s.tcpEntryPoints.Start()
 	s.udpEntryPoints.Start()

@@ -230,7 +230,9 @@ func (e *TCPEntryPoint) Start(ctx context.Context) {
 	for {
 		conn, err := e.listener.Accept()
 		if err != nil {
-			logger.Error().Err(err).Send()
+			if err != nil && !errors.Is(err, http.ErrServerClosed) && !strings.Contains(err.Error(), "use of closed network connection") {
+				logger.Error().Err(err).Send()
+			}
 
 			var opErr *net.OpError
 			if errors.As(err, &opErr) && opErr.Temporary() {
@@ -306,11 +308,13 @@ func (e *TCPEntryPoint) Shutdown(ctx context.Context) {
 			return
 		}
 
-		logger.Error().Err(err).Send()
+		if !strings.Contains(err.Error(), "use of closed network connection") {
+			logger.Error().Err(err).Send()
+		}
 
 		// We expect Close to fail again because Shutdown most likely failed when trying to close a listener.
 		// We still call it however, to make sure that all connections get closed as well.
-		server.Close()
+		_ = server.Close()
 	}
 
 	if e.httpServer.Server != nil {
@@ -685,8 +689,8 @@ func createHTTPServer(ctx context.Context, ln net.Listener, configuration *stati
 
 	listener := newHTTPForwarder(ln)
 	go func() {
-		err := serverHTTP.Serve(listener)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		err = serverHTTP.Serve(listener)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) && !strings.Contains(err.Error(), "use of closed network connection") {
 			log.Ctx(ctx).Error().Err(err).Msg("Error while starting server")
 		}
 	}()

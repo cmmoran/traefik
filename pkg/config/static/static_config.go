@@ -1,10 +1,15 @@
 package static
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"github.com/Masterminds/sprig/v3"
+	"net"
+	"os"
 	"path"
 	"strings"
+	"text/template"
 	"time"
 
 	legolog "github.com/go-acme/lego/v4/log"
@@ -55,6 +60,8 @@ const (
 
 // Configuration is the static configuration.
 type Configuration struct {
+	Cluster *Cluster `description:"Cluster configuration." json:"cluster,omitempty" toml:"cluster,omitempty" yaml:"cluster,omitempty" export:"true"`
+
 	Global *Global `description:"Global configuration options" json:"global,omitempty" toml:"global,omitempty" yaml:"global,omitempty" export:"true"`
 
 	ServersTransport    *ServersTransport    `description:"Servers default transport." json:"serversTransport,omitempty" toml:"serversTransport,omitempty" yaml:"serversTransport,omitempty" export:"true"`
@@ -79,6 +86,105 @@ type Configuration struct {
 	Core *Core `description:"Core controls." json:"core,omitempty" toml:"core,omitempty" yaml:"core,omitempty" export:"true"`
 
 	Spiffe *SpiffeClientConfig `description:"SPIFFE integration configuration." json:"spiffe,omitempty" toml:"spiffe,omitempty" yaml:"spiffe,omitempty" export:"true"`
+}
+
+type Peer struct {
+	NodeID  string `description:"Unique string identifying this server for all time." json:"id,omitempty" toml:"id,omitempty" yaml:"id,omitempty" export:"true"`
+	Address string `description:"Network address that a transport can contact." json:"address,omitempty" toml:"address,omitempty" yaml:"address,omitempty" export:"true"`
+}
+
+type Cluster struct {
+	DataDir          string          `description:"Path to the cluster data directory." json:"dataDir,omitempty" toml:"dataDir,omitempty" yaml:"dataDir,omitempty" export:"true"`
+	NodeID           string          `description:"Unique identifier for this node." json:"nodeID,omitempty" toml:"nodeID,omitempty" yaml:"nodeID,omitempty" export:"true"`
+	BindAddress      string          `description:"Defines the address to bind to for the Raft server." json:"bindAddress,omitempty" toml:"bindAddress,omitempty" yaml:"bindAddress,omitempty" export:"true"`
+	AdvertiseAddress string          `description:"Defines the address to advertise for the Raft server." json:"advertiseAddress,omitempty" toml:"advertiseAddress,omitempty" yaml:"advertiseAddress,omitempty" export:"true"`
+	Peers            []Peer          `description:"Defines the peers to connect to." json:"peers,omitempty" toml:"peers,omitempty" yaml:"peers,omitempty" export:"true"`
+	TcpTimeout       ptypes.Duration `description:"Defines the timeout for TCP connections." json:"tcpTimeout,omitempty" toml:"tcpTimeout,omitempty" yaml:"tcpTimeout,omitempty" export:"true"`
+	SnapshotMax      int             `description:"Maximum number of entries in a snapshot." json:"snapshotMax,omitempty" toml:"snapshotMax,omitempty" yaml:"snapshotMax,omitempty" export:"true"`
+	JoinToken        string          `description:"Defines the token to use to join the cluster." json:"joinToken,omitempty" toml:"joinToken,omitempty" yaml:"joinToken,omitempty" export:"true"`
+	resolved         bool
+}
+
+func isTemplate(s string) bool {
+	return len(s) > 0 && strings.Contains(s, "{{") && strings.Contains(s, "}}")
+}
+
+func executeTemplate(s string) string {
+	if isTemplate(s) {
+		fnmap := sprig.FuncMap()
+		fnmap["hostname"] = hostname
+		fnmap["ip"] = localIp
+		if tmpl, err := template.New("").Funcs(fnmap).Parse(s); err == nil {
+			buf := new(bytes.Buffer)
+			if err = tmpl.Execute(buf, s); err == nil {
+				return buf.String()
+			}
+		}
+	}
+	return s
+}
+
+func hostname() string {
+	host, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return host
+}
+
+// GetLocalIP returns the non loopback local IP of the host
+func localIp(filter string) string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ipnetIp := ipnet.IP.String()
+				if len(filter) > 0 {
+					switch {
+					case strings.HasPrefix(filter, "cidr:"):
+						if _, cidrNet, cerr := net.ParseCIDR(strings.TrimPrefix(filter, "cidr:")); cerr == nil {
+							if cidrNet.Contains(ipnet.IP) {
+								log.Info().Msgf("IP %s matches CIDR %s", ipnetIp, cidrNet.String())
+								return ipnetIp
+							}
+						}
+					case strings.HasPrefix(filter, "contains:"):
+						if strings.Contains(ipnetIp, strings.TrimPrefix(filter, "contains:")) {
+							log.Info().Msgf("IP %s contains %s", ipnetIp, strings.TrimPrefix(filter, "contains:"))
+							return ipnetIp
+						}
+					case strings.HasPrefix(filter, "startswith:"):
+						if strings.HasPrefix(ipnetIp, strings.TrimPrefix(filter, "startswith:")) {
+							log.Info().Msgf("IP %s starts with %s", ipnetIp, strings.TrimPrefix(filter, "startswith:"))
+							return ipnetIp
+						}
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (x *Cluster) Resolve() *Cluster {
+	if x.resolved {
+		return x
+	}
+	return &Cluster{
+		DataDir:          executeTemplate(x.DataDir),
+		NodeID:           executeTemplate(x.NodeID),
+		BindAddress:      executeTemplate(x.BindAddress),
+		AdvertiseAddress: executeTemplate(x.AdvertiseAddress),
+		Peers:            x.Peers,
+		TcpTimeout:       x.TcpTimeout,
+		SnapshotMax:      x.SnapshotMax,
+		JoinToken:        executeTemplate(x.JoinToken),
+		resolved:         true,
+	}
 }
 
 // Core configures Traefik core behavior.
