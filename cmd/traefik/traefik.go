@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog"
 	"io"
 	stdlog "log"
 	"maps"
@@ -13,6 +14,7 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -53,8 +55,11 @@ import (
 )
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	// traefik config inits
 	tConfig := cmd.NewTraefikConfiguration()
+
+	configurationChan := make(chan *static.Configuration, 1)
 
 	loaders := []cli.ResourceLoader{&tcli.DeprecationLoader{}, &tcli.FileLoader{}, &tcli.FlagLoader{}, &tcli.EnvLoader{}}
 
@@ -65,11 +70,29 @@ Complete documentation is available at https://traefik.io`,
 		Configuration: tConfig,
 		Resources:     loaders,
 		Run: func(_ []string) error {
-			return runCmd(&tConfig.Configuration)
+			configurationChan <- &tConfig.Configuration
+			return runCmd(configurationChan)
 		},
 	}
 
-	err := cmdTraefik.AddCommand(healthcheck.NewCmd(&tConfig.Configuration, loaders))
+	clusterLoaders := []cli.ResourceLoader{&tcli.RaftLoader{ResourceLoaders: loaders}}
+	var clusterCmd *cli.Command
+	clusterCmd = &cli.Command{
+		Name:          "cluster",
+		Description:   "cluster related commands",
+		Configuration: tConfig,
+		Resources:     clusterLoaders,
+		Run: func(_ []string) error {
+			return runCluster(clusterCmd, tConfig, configurationChan)
+		},
+	}
+	err := cmdTraefik.AddCommand(clusterCmd)
+	if err != nil {
+		stdlog.Println(err)
+		os.Exit(1)
+	}
+
+	err = cmdTraefik.AddCommand(healthcheck.NewCmd(&tConfig.Configuration, loaders))
 	if err != nil {
 		stdlog.Println(err)
 		os.Exit(1)
@@ -90,16 +113,51 @@ Complete documentation is available at https://traefik.io`,
 	logrus.Exit(0)
 }
 
-func runCmd(staticConfiguration *static.Configuration) error {
+func runCmd(staticConfigurationChan chan *static.Configuration) error {
+	var (
+		svr *server.Server
+		err error
+	)
+	defer close(staticConfigurationChan)
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
+	defer func() {
+		svr.Stop()
+		svr.Close()
+	}()
+	runMu := sync.Mutex{}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case staticConfiguration := <-staticConfigurationChan:
+			runMu.Lock()
+			if svr != nil {
+				log.Info().Msg("Shutting down current running server...")
+				svr.Stop()
+				svr.Close()
+				log.Info().Msg("Shut down current running server.")
+			}
+			log.Info().Any("configuration", staticConfiguration).Msg("Configuration received from channel")
+			if svr, err = doRunCmd(staticConfiguration); err != nil {
+				runMu.Unlock()
+				return err
+			}
+			runMu.Unlock()
+		}
+	}
+}
+
+func doRunCmd(staticConfiguration *static.Configuration) (*server.Server, error) {
 	if err := setupLogger(staticConfiguration); err != nil {
-		return fmt.Errorf("setting up logger: %w", err)
+		return nil, fmt.Errorf("setting up logger: %w", err)
 	}
 
 	http.DefaultTransport.(*http.Transport).Proxy = http.ProxyFromEnvironment
 
 	staticConfiguration.SetEffectiveConfiguration()
 	if err := staticConfiguration.ValidateConfiguration(); err != nil {
-		return err
+		return nil, err
 	}
 
 	log.Info().Str("version", version.Version).
@@ -121,7 +179,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 
 	svr, err := setupServer(staticConfiguration)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -130,8 +188,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 		staticConfiguration.Ping.WithContext(ctx)
 	}
 
-	svr.Start(ctx)
-	defer svr.Close()
+	svr.Start()
 
 	sent, err := daemon.SdNotify(false, "READY=1")
 	if !sent && err != nil {
@@ -164,9 +221,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 		})
 	}
 
-	svr.Wait()
-	log.Info().Msg("Shutting down")
-	return nil
+	return svr, nil
 }
 
 func setupServer(staticConfiguration *static.Configuration) (*server.Server, error) {
@@ -231,8 +286,8 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 
 	// Plugins
 	pluginLogger := log.Ctx(ctx).With().Logger()
-	hasPlugins := staticConfiguration.Experimental != nil && (staticConfiguration.Experimental.Plugins != nil || staticConfiguration.Experimental.LocalPlugins != nil)
-	if hasPlugins {
+	doesHavePlugins := hasPlugins(staticConfiguration) || hasLocalPlugins(staticConfiguration)
+	if doesHavePlugins {
 		pluginsList := slices.Collect(maps.Keys(staticConfiguration.Experimental.Plugins))
 		pluginsList = append(pluginsList, slices.Collect(maps.Keys(staticConfiguration.Experimental.LocalPlugins))...)
 
@@ -246,7 +301,7 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 	}
 	if err != nil {
 		pluginLogger.Err(err).Msg("Plugins are disabled because an error has occurred.")
-	} else if hasPlugins {
+	} else if doesHavePlugins {
 		pluginLogger.Info().Msg("Plugins loaded.")
 	}
 
@@ -257,14 +312,14 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 			break
 		}
 
-		p, err := pluginBuilder.BuildProvider(name, conf)
-		if err != nil {
-			return nil, fmt.Errorf("plugin: failed to build provider: %w", err)
+		p, pluginErr := pluginBuilder.BuildProvider(name, conf)
+		if pluginErr != nil {
+			return nil, fmt.Errorf("plugin: failed to build provider: %w", pluginErr)
 		}
 
-		err = providerAggregator.AddProvider(p)
-		if err != nil {
-			return nil, fmt.Errorf("plugin: failed to add provider: %w", err)
+		pluginErr = providerAggregator.AddProvider(p)
+		if pluginErr != nil {
+			return nil, fmt.Errorf("plugin: failed to add provider: %w", pluginErr)
 		}
 	}
 
@@ -315,8 +370,8 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 
 	// TLS
 	watcher.AddListener(func(conf dynamic.Configuration) {
-		ctx := context.Background()
-		tlsManager.UpdateConfigs(ctx, conf.TLS.Stores, conf.TLS.Options, conf.TLS.Certificates)
+		tlsCtx := context.Background()
+		tlsManager.UpdateConfigs(tlsCtx, conf.TLS.Stores, conf.TLS.Options, conf.TLS.Certificates)
 
 		gauge := metricsRegistry.TLSCertsNotAfterTimestampGauge()
 		for _, certificate := range tlsManager.GetServerCertificates() {
