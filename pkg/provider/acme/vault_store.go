@@ -30,7 +30,7 @@ type VaultStore struct {
 }
 
 // NewVaultStore initializes a new VaultStore with a vault.
-func NewVaultStore(filename string, config *VaultConfig) *VaultStore {
+func NewVaultStore(filename string, config *VaultConfig, routinesPool *safe.Pool) *VaultStore {
 	logger := log.With().Str(logs.ProviderName, "acme").Logger()
 	found := true
 	for strings.HasPrefix(filename, "/") && found {
@@ -43,36 +43,43 @@ func NewVaultStore(filename string, config *VaultConfig) *VaultStore {
 	}
 	logger.Info().Msgf("Created VaultStore mountpath=%s filename=%s", store.vaultConfig.EnginePath, store.filename)
 	store.Init()
-	store.listenSaveAction()
+	store.listenSaveAction(routinesPool)
 	return store
 }
 
 // listenSaveAction listens to a chan to store ACME data in vault in json format into `VaultStore.VaultConfig.url`.
-func (v *VaultStore) listenSaveAction() {
-	safe.Go(func() {
+func (v *VaultStore) listenSaveAction(routinesPool *safe.Pool) {
+	routinesPool.GoCtx(func(ctx context.Context) {
 		logger := log.With().Str(logs.ProviderName, "acme").Logger()
 
-		var (
-			err  error
-			data []byte
-			resp *vault.Response[schema.KvV2WriteResponse]
-		)
-		for object := range v.saveDataChan {
-			data, err = json.Marshal(object)
-			if err != nil {
-				logger.Error().Err(err).Send()
-			}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case object := <-v.saveDataChan:
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				data, err := json.Marshal(object)
+				if err != nil {
+					logger.Error().Err(err).Send()
+				}
 
-			resp, err = v.client.Secrets.KvV2Write(context.Background(), v.filename, schema.KvV2WriteRequest{
-				Data: map[string]any{
-					"data": data,
-				},
-			}, vault.WithMountPath(v.vaultConfig.EnginePath))
-			if err != nil {
-				logger.Error().Err(err).Send()
-			}
+				var resp *vault.Response[schema.KvV2WriteResponse]
+				resp, err = v.client.Secrets.KvV2Write(context.Background(), v.filename, schema.KvV2WriteRequest{
+					Data: map[string]any{
+						"data": data,
+					},
+				}, vault.WithMountPath(v.vaultConfig.EnginePath))
+				if err != nil {
+					logger.Error().Err(err).Send()
+				}
 
-			logger.Info().Msgf("Wrote acme json with requestID: %v", resp.RequestID)
+				logger.Info().Msgf("Wrote acme json with requestID: %v", resp.RequestID)
+
+			}
 		}
 	})
 }
