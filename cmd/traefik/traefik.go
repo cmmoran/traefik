@@ -459,7 +459,7 @@ func initACMEProvider(c *static.Configuration, providerAggregator *aggregator.Pr
 
 		if resolver.ACME.VaultStorage != nil {
 			log.Info().Msgf("Traefik initializing Vault storage for url: %s", resolver.ACME.VaultStorage.Url)
-			localStores[resolver.ACME.Storage] = acme.NewVaultStore(resolver.ACME.Storage, resolver.ACME.VaultStorage)
+			localStores[resolver.ACME.Storage] = acme.NewVaultStore(resolver.ACME.Storage, resolver.ACME.VaultStorage, routinesPool)
 		} else if localStores[resolver.ACME.Storage] == nil {
 			localStores[resolver.ACME.Storage] = acme.NewLocalStore(resolver.ACME.Storage, routinesPool)
 		}
