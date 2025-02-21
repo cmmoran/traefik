@@ -48,7 +48,9 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 					case "X-Custom-Request-Header":
 						if len(v) != 1 {
 							_, err := uuid.Parse(v[0])
-							return assert.NoError(tt, err)
+							if !assert.NoError(tt, err) {
+								return false
+							}
 						}
 					default:
 						return false
@@ -78,12 +80,16 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 						if len(v) != 1 {
 							return false
 						}
-						return assert.Equal(tt, fooId, v[0])
+						if !assert.Equal(tt, fooId, v[0]) {
+							return false
+						}
 					case "X-Custom-Request-Header":
 						if len(v) != 1 {
 							return false
 						}
-						return assert.Equal(tt, fooId, v[0])
+						if !assert.Equal(tt, fooId, v[0]) {
+							return false
+						}
 					default:
 						return false
 					}
@@ -93,10 +99,10 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 			},
 		},
 		{
-			desc: "uses a header from a currently existing header",
+			desc: "uses a header from a currently existing header with default value",
 			cfg: dynamic.Headers{
 				CustomRequestHeaders: map[string]string{
-					"X-Custom-Request-Header": `{{ $corrid := .Header.Get "x-foo-id" }}{{ if eq "" $corrid }}{{$corrid = uuidv4}}{{ end }}{{ printf "%s" $corrid }}`,
+					"X-Custom-Request-Header": `{{ default uuidv4 (header "x-foo-id" .) }}`,
 				},
 			},
 			initial: http.Header{"Foo": []string{"bar"}, "X-Foo-Id": []string{"b24b59f1-9872-4c6d-ace8-14b0c0537390"}},
@@ -112,12 +118,16 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 						if len(v) != 1 {
 							return false
 						}
-						return assert.Equal(tt, fooId, v[0])
+						if !assert.Equal(tt, fooId, v[0]) {
+							return false
+						}
 					case "X-Custom-Request-Header":
 						if len(v) != 1 {
 							return false
 						}
-						return assert.Equal(tt, fooId, v[0])
+						if !assert.Equal(tt, fooId, v[0]) {
+							return false
+						}
 					default:
 						return false
 					}
@@ -130,7 +140,7 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 			desc: "adds a header for a header that does not exist",
 			cfg: dynamic.Headers{
 				CustomRequestHeaders: map[string]string{
-					"X-Custom-Request-Header": `{{ $corrid := .Header.Get "x-foo-id" }}{{ if eq "" $corrid }}{{$corrid = uuidv4}}{{ end }}{{ printf "%s" $corrid }}`,
+					"X-Custom-Request-Header": `{{ default (uuidv4) (header "x-foo-id" .) }}`,
 				},
 			},
 			initial: http.Header{"Foo": []string{"bar"}},
@@ -148,7 +158,9 @@ func TestNewHeader_customRequestHeader(t *testing.T) {
 							return false
 						}
 						_, err := uuid.Parse(v[0])
-						return err == nil
+						if err != nil {
+							return false
+						}
 					default:
 						return false
 					}

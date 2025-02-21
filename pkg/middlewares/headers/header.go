@@ -24,6 +24,30 @@ type Header struct {
 	hasCorsHeaders     bool
 	headers            *dynamic.Headers
 	allowOriginRegexes []*regexp.Regexp
+
+	headerTemplates *template.Template
+}
+
+func safeFuncMap() template.FuncMap {
+	funcMap := sprig.TxtFuncMap()
+
+	// Remove dangerous functions
+	delete(funcMap, "env")       // Prevents environment variable access
+	delete(funcMap, "expandenv") // Prevents expanding environment variables
+	delete(funcMap, "exec")      // Prevents shell execution
+	delete(funcMap, "get")       // Blocks fetching URLs (potential SSRF)
+	delete(funcMap, "htpasswd")  // Prevents generating bcrypt password hashes
+	delete(funcMap, "toYaml")    // Avoid leaking structured data
+	delete(funcMap, "toJson")    // Avoid leaking structured data
+
+	funcMap["header"] = func(key string, req *http.Request) string {
+		if req == nil {
+			return ""
+		}
+
+		return req.Header.Get(key)
+	}
+	return funcMap
 }
 
 // NewHeader constructs a new header instance from supplied frontend header struct.
@@ -39,6 +63,25 @@ func NewHeader(next http.Handler, cfg dynamic.Headers) (*Header, error) {
 		}
 		regexes[i] = reg
 	}
+	tpl := template.New("").Funcs(safeFuncMap())
+	if hasCustomHeaders {
+		delims := cfg.HeadersTemplateDelim
+		if delims == nil || len(delims) == 0 {
+			delims = []string{"{{", "}}"}
+		}
+		tpl = tpl.Delims(delims[0], delims[1])
+		for header, value := range cfg.CustomRequestHeaders {
+			if strings.Contains(value, delims[0]) && strings.Contains(value, delims[1]) {
+				value = strings.Trim(value, " \t\n\r")
+				if _, err := tpl.New(http.CanonicalHeaderKey(header)).Parse(value); err != nil {
+					continue
+				}
+			}
+		}
+	}
+	if tpl.DefinedTemplates() == "" {
+		tpl = nil
+	}
 
 	return &Header{
 		next:               next,
@@ -46,6 +89,7 @@ func NewHeader(next http.Handler, cfg dynamic.Headers) (*Header, error) {
 		hasCustomHeaders:   hasCustomHeaders,
 		hasCorsHeaders:     hasCorsHeaders,
 		allowOriginRegexes: regexes,
+		headerTemplates:    tpl,
 	}, nil
 }
 
@@ -82,36 +126,19 @@ func (s *Header) modifyCustomRequestHeaders(req *http.Request) {
 			req.Host = value
 
 		default:
-			delims := s.headers.HeadersTemplateDelim
-			if delims == nil || len(delims) == 0 {
-				delims = []string{"{{", "}}"}
-			}
-			if strings.Contains(value, delims[0]) && strings.Contains(value, delims[1]) {
-				if templateResult, err := s.executeHeaderTemplate(delims, value, req); err == nil {
-					value = templateResult
+			if s.headerTemplates != nil && s.headerTemplates.DefinedTemplates() != "" {
+				buf := new(bytes.Buffer)
+				if headerTemplate := s.headerTemplates.Lookup(http.CanonicalHeaderKey(header)); headerTemplate != nil {
+					if err := headerTemplate.Execute(buf, req); err != nil {
+						value = err.Error()
+					} else {
+						value = buf.String()
+					}
 				}
+
 			}
 			req.Header.Set(header, value)
 		}
-	}
-}
-
-func (s *Header) executeHeaderTemplate(delims []string, tmpl string, req *http.Request) (string, error) {
-	var (
-		err       error
-		ttemplate *template.Template
-	)
-	if delims == nil || len(delims) == 0 {
-		delims = []string{"{{", "}}"}
-	}
-	if ttemplate, err = template.New("header").Delims(delims[0], delims[1]).Funcs(sprig.FuncMap()).Parse(tmpl); err != nil {
-		return tmpl, err
-	}
-	buf := new(bytes.Buffer)
-	if err = ttemplate.Execute(buf, req); err != nil {
-		return tmpl, err
-	} else {
-		return buf.String(), nil
 	}
 }
 
@@ -119,6 +146,10 @@ func (s *Header) executeHeaderTemplate(delims []string, tmpl string, req *http.R
 // This method is called AFTER the response is generated from the backend
 // and can merge/override headers from the backend response.
 func (s *Header) PostRequestModifyResponseHeaders(res *http.Response) error {
+	if res == nil || res.Request == nil {
+		return nil
+	}
+
 	// Loop through Custom response headers
 	for header, value := range s.headers.CustomResponseHeaders {
 		if value == "" {
@@ -128,7 +159,7 @@ func (s *Header) PostRequestModifyResponseHeaders(res *http.Response) error {
 		}
 	}
 
-	if res != nil && res.Request != nil {
+	if res.Request != nil {
 		originHeader := res.Request.Header.Get("Origin")
 		allowed, match := s.isOriginAllowed(originHeader)
 
