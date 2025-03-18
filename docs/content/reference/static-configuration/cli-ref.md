@@ -201,7 +201,7 @@ Storage to use. (Default: ```acme.json```)
 `--certificatesresolvers.<name>.acme.tlschallenge`:  
 Activate TLS-ALPN-01 Challenge. (Default: ```true```)
 
-`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.path`:  
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.enginepath`:  
 
 
 `--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.roleid`:  
@@ -210,10 +210,13 @@ Activate TLS-ALPN-01 Challenge. (Default: ```true```)
 `--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.secretid`:  
 
 
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.certauth.enginepath`:  
+
+
 `--certificatesresolvers.<name>.acme.vaultstorage.auth.certauth.name`:  
 
 
-`--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.path`:  
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.enginepath`:  
 
 
 `--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.role`:  

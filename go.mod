@@ -118,7 +118,10 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
-require github.com/google/uuid v1.6.0
+require (
+	github.com/IncSW/geoip2 v0.1.3
+	github.com/google/uuid v1.6.0
+)
 
 require (
 	cloud.google.com/go/auth v0.15.0 // indirect

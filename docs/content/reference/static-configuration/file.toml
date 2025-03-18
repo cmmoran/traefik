@@ -547,13 +547,14 @@
           token = "foobar"
           [certificatesResolvers.CertificateResolver0.acme.vaultStorage.auth.certAuth]
             name = "foobar"
+            enginePath = "foobar"
           [certificatesResolvers.CertificateResolver0.acme.vaultStorage.auth.appRole]
             roleID = "foobar"
             secretID = "foobar"
-            path = "foobar"
+            enginePath = "foobar"
           [certificatesResolvers.CertificateResolver0.acme.vaultStorage.auth.kubernetes]
-            path = "foobar"
             role = "foobar"
+            enginePath = "foobar"
       [certificatesResolvers.CertificateResolver0.acme.eab]
         kid = "foobar"
         hmacEncoded = "foobar"
@@ -602,13 +603,14 @@
           token = "foobar"
           [certificatesResolvers.CertificateResolver1.acme.vaultStorage.auth.certAuth]
             name = "foobar"
+            enginePath = "foobar"
           [certificatesResolvers.CertificateResolver1.acme.vaultStorage.auth.appRole]
             roleID = "foobar"
             secretID = "foobar"
-            path = "foobar"
+            enginePath = "foobar"
           [certificatesResolvers.CertificateResolver1.acme.vaultStorage.auth.kubernetes]
-            path = "foobar"
             role = "foobar"
+            enginePath = "foobar"
       [certificatesResolvers.CertificateResolver1.acme.eab]
         kid = "foobar"
         hmacEncoded = "foobar"
