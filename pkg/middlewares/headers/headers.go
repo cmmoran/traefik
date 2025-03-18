@@ -44,10 +44,11 @@ func New(ctx context.Context, next http.Handler, cfg dynamic.Headers, name strin
 	}
 
 	if hasCustomHeaders || hasCorsHeaders {
-		logger.Debug().Msgf("Setting up customHeaders/Cors from %v", cfg)
+		logger.Debug().Any("config", cfg).Msgf("Setting up customHeaders/Cors")
 		var err error
 		handler, err = NewHeader(nextHandler, cfg)
 		if err != nil {
+			logger.Error().Err(err).Msg("Error setting up customHeaders/Cors")
 			return nil, err
 		}
 	}

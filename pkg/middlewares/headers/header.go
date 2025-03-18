@@ -74,6 +74,7 @@ func NewHeader(next http.Handler, cfg dynamic.Headers) (*Header, error) {
 			if strings.Contains(value, delims[0]) && strings.Contains(value, delims[1]) {
 				value = strings.Trim(value, " \t\n\r")
 				if _, err := tpl.New(http.CanonicalHeaderKey(header)).Parse(value); err != nil {
+
 					continue
 				}
 			}
