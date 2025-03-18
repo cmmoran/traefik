@@ -562,13 +562,14 @@ certificatesResolvers:
           token: foobar
           certAuth:
             name: foobar
+            enginePath: foobar
           appRole:
             roleID: foobar
             secretID: foobar
-            path: foobar
+            enginePath: foobar
           kubernetes:
-            path: foobar
             role: foobar
+            enginePath: foobar
       keyType: foobar
       eab:
         kid: foobar
@@ -616,13 +617,14 @@ certificatesResolvers:
           token: foobar
           certAuth:
             name: foobar
+            enginePath: foobar
           appRole:
             roleID: foobar
             secretID: foobar
-            path: foobar
+            enginePath: foobar
           kubernetes:
-            path: foobar
             role: foobar
+            enginePath: foobar
       keyType: foobar
       eab:
         kid: foobar

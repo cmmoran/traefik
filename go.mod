@@ -117,7 +117,11 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
-require github.com/google/uuid v1.6.0
+require (
+	github.com/IncSW/geoip2 v0.1.3
+	github.com/google/uuid v1.6.0
+	github.com/oschwald/geoip2-golang v1.11.0
+)
 
 require (
 	cloud.google.com/go/auth v0.13.0 // indirect
@@ -298,6 +302,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.81.1 // indirect
+	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/ovh/go-ovh v1.6.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/peterhellberg/link v1.2.0 // indirect
