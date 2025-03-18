@@ -13,17 +13,17 @@ global:
   checkNewVersion: false
   sendAnonymousUsage: false
 
-#cluster:
-#  dataDir: .raft
-#  nodeId: "{{hostname}}"
-#  bindAddress: "{{ip \"cidr:10.10.0.0/16\"}}:4242"
-#  peers:
-#    - nodeId: host-one
-#      address: 10.10.1.2:4242
-#    - nodeId: host-two
-#      address: 10.10.1.3:4242
-#    - nodeId: host-three
-#      address: 10.10.1.4:4242
+cluster:
+  dataDir: .raft
+  nodeId: "{{hostname}}"
+  bindAddress: "{{ip \"cidr:10.10.0.0/16\"}}:4242"
+  peers:
+    - nodeId: host-one
+      address: 10.10.1.2:4242
+    - nodeId: host-two
+      address: 10.10.1.3:4242
+    - nodeId: host-three
+      address: 10.10.1.4:4242
 
 ################################################################
 # EntryPoints configuration

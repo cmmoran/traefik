@@ -118,9 +118,10 @@ require (
 )
 
 require (
+	github.com/IncSW/geoip2 v0.1.3
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/raft v1.7.1
-	github.com/hashicorp/raft-boltdb v0.0.0-20241202213821-f9dd2ba30efd
+	github.com/hashicorp/raft v1.7.2
+	github.com/hashicorp/raft-boltdb v0.0.0-20250225060035-8f7048cdfa53
 )
 
 require (
@@ -236,6 +237,7 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
+	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.2 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect

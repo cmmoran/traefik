@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/traefik/traefik/v3/pkg/middlewares/geoip"
 	"net/http"
 	"reflect"
 	"slices"
@@ -219,6 +220,15 @@ func (b *Builder) buildConstructor(ctx context.Context, middlewareName string) (
 		}
 		middleware = func(next http.Handler) (http.Handler, error) {
 			return auth.NewForward(ctx, next, *config.ForwardAuth, middlewareName)
+		}
+	}
+
+	if config.GeoIP != nil {
+		if middleware != nil {
+			return nil, badConf
+		}
+		middleware = func(next http.Handler) (http.Handler, error) {
+			return geoip.New(ctx, next, *config.GeoIP, middlewareName)
 		}
 	}
 
