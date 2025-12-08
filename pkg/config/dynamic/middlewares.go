@@ -33,6 +33,8 @@ type Middleware struct {
 	RedirectScheme    *RedirectScheme    `json:"redirectScheme,omitempty" toml:"redirectScheme,omitempty" yaml:"redirectScheme,omitempty" export:"true"`
 	BasicAuth         *BasicAuth         `json:"basicAuth,omitempty" toml:"basicAuth,omitempty" yaml:"basicAuth,omitempty" export:"true"`
 	DigestAuth        *DigestAuth        `json:"digestAuth,omitempty" toml:"digestAuth,omitempty" yaml:"digestAuth,omitempty" export:"true"`
+	APIKey            *APIKey            `json:"apiKey,omitempty" toml:"apiKey,omitempty" yaml:"apiKey,omitempty" export:"true"`
+	OIDC              *OIDC              `json:"oidc,omitempty" toml:"oidc,omitempty" yaml:"oidc,omitempty" export:"true"`
 	ForwardAuth       *ForwardAuth       `json:"forwardAuth,omitempty" toml:"forwardAuth,omitempty" yaml:"forwardAuth,omitempty" export:"true"`
 	InFlightReq       *InFlightReq       `json:"inFlightReq,omitempty" toml:"inFlightReq,omitempty" yaml:"inFlightReq,omitempty" export:"true"`
 	Buffering         *Buffering         `json:"buffering,omitempty" toml:"buffering,omitempty" yaml:"buffering,omitempty" export:"true"`
@@ -42,6 +44,7 @@ type Middleware struct {
 	Retry             *Retry             `json:"retry,omitempty" toml:"retry,omitempty" yaml:"retry,omitempty" export:"true"`
 	ContentType       *ContentType       `json:"contentType,omitempty" toml:"contentType,omitempty" yaml:"contentType,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 	GrpcWeb           *GrpcWeb           `json:"grpcWeb,omitempty" toml:"grpcWeb,omitempty" yaml:"grpcWeb,omitempty" export:"true"`
+	GeoIP             *GeoIP             `json:"geoIP,omitempty" toml:"geoIP,omitempty" yaml:"geoIP,omitempty" export:"true"`
 
 	Plugin map[string]PluginConf `json:"plugin,omitempty" toml:"plugin,omitempty" yaml:"plugin,omitempty" export:"true"`
 
@@ -50,6 +53,16 @@ type Middleware struct {
 	ResponseHeaderModifier *HeaderModifier  `json:"responseHeaderModifier,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	RequestRedirect        *RequestRedirect `json:"requestRedirect,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	URLRewrite             *URLRewrite      `json:"URLRewrite,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// GeoIP configures the Geographic Location information based on incoming IP address from `.mmdb` providers such as MaxMind
+type GeoIP struct {
+	DbPath     []string `json:"dbPath,omitempty" toml:"dbPath,omitempty" yaml:"dbPath,omitempty"`
+	Debug      bool     `json:"debug,omitempty" toml:"debug,omitempty" yaml:"debug,omitempty"`
+	ExcludeIPs []string `json:"excludeIPs,omitempty" toml:"excludeIPs,omitempty" yaml:"excludeIPs,omitempty"`
+	SetRealIP  bool     `json:"setRealIP,omitempty" toml:"setRealIP" yaml:"setRealIP,omitempty"` //nolint:tagliatelle
 }
 
 // +k8s:deepcopy-gen=true
@@ -106,6 +119,166 @@ type BasicAuth struct {
 	// HeaderField defines a header field to store the authenticated user.
 	// More info: https://doc.traefik.io/traefik/v3.6/middlewares/http/basicauth/#headerfield
 	HeaderField string `json:"headerField,omitempty" toml:"headerField,omitempty" yaml:"headerField,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// APIKey holds the API key authentication middleware configuration.
+// This middleware restricts access to your services to known API keys.
+// More info: https://doc.traefik.io/traefik/v3.6/middlewares/http/apikey/
+type APIKey struct {
+	// KeySource defines where to read the API key from.
+	KeySource *APIKeySource `json:"keySource,omitempty" toml:"keySource,omitempty" yaml:"keySource,omitempty" export:"true"`
+	// SecretNonBase64Encoded defines whether the secret sent by the client is base64 encoded.
+	SecretNonBase64Encoded bool `json:"secretNonBase64Encoded,omitempty" toml:"secretNonBase64Encoded,omitempty" yaml:"secretNonBase64Encoded,omitempty" export:"true"`
+	// SecretValues contains the hashed API keys.
+	// Supported hashing algorithms are Bcrypt, SHA1 and MD5.
+	// The hash should be generated using htpasswd.
+	SecretValues []string `json:"secretValues,omitempty" toml:"secretValues,omitempty" yaml:"secretValues,omitempty" loggable:"false"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// APIKeySource defines where to read the API key from.
+type APIKeySource struct {
+	// Header defines the header name containing the secret sent by the client.
+	Header string `json:"header,omitempty" toml:"header,omitempty" yaml:"header,omitempty" export:"true"`
+	// HeaderAuthScheme defines the scheme when using Authorization as header name.
+	HeaderAuthScheme string `json:"headerAuthScheme,omitempty" toml:"headerAuthScheme,omitempty" yaml:"headerAuthScheme,omitempty" export:"true"`
+	// Query defines the query parameter name containing the secret sent by the client.
+	Query string `json:"query,omitempty" toml:"query,omitempty" yaml:"query,omitempty" export:"true"`
+	// Cookie defines the cookie name containing the secret sent by the client.
+	Cookie string `json:"cookie,omitempty" toml:"cookie,omitempty" yaml:"cookie,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDC holds the OpenID Connect authentication middleware configuration.
+// This middleware restricts access to your services by delegating authentication to an OpenID Connect provider.
+// More info: https://doc.traefik.io/traefik/v3.6/middlewares/http/oidc/
+type OIDC struct {
+	// Issuer defines the URL to the OpenID Connect provider.
+	Issuer string `json:"issuer,omitempty" toml:"issuer,omitempty" yaml:"issuer,omitempty" export:"true"`
+	// RedirectURL defines the URL used by the OpenID Connect provider to redirect back to the middleware once the authorization is complete.
+	RedirectURL string `json:"redirectUrl,omitempty" toml:"redirectUrl,omitempty" yaml:"redirectUrl,omitempty" export:"true"`
+	// ClientID defines the client identifier for an account on the OpenID Connect provider.
+	ClientID string `json:"clientID,omitempty" toml:"clientID,omitempty" yaml:"clientID,omitempty" export:"true"`
+	// ClientSecret defines the client secret for an account on the OpenID Connect provider.
+	ClientSecret string `json:"clientSecret,omitempty" toml:"clientSecret,omitempty" yaml:"clientSecret,omitempty" export:"true"`
+	// Claims defines the claims to validate in order to authorize the request.
+	Claims string `json:"claims,omitempty" toml:"claims,omitempty" yaml:"claims,omitempty" export:"true"`
+	// UsernameClaim defines the claim that will be evaluated to populate the clientusername in the access logs.
+	UsernameClaim string `json:"usernameClaim,omitempty" toml:"usernameClaim,omitempty" yaml:"usernameClaim,omitempty" export:"true"`
+	// ForwardHeaders defines the HTTP headers to add to requests with values extracted from token claims.
+	ForwardHeaders map[string]string `json:"forwardHeaders,omitempty" toml:"forwardHeaders,omitempty" yaml:"forwardHeaders,omitempty" export:"true"`
+	// ClientConfig defines the configuration used to connect to the OpenID Connect provider.
+	ClientConfig *OIDCClientConfig `json:"clientConfig,omitempty" toml:"clientConfig,omitempty" yaml:"clientConfig,omitempty" export:"true"`
+	// PKCE defines whether to use Proof Key for Code Exchange.
+	PKCE bool `json:"pkce,omitempty" toml:"pkce,omitempty" yaml:"pkce,omitempty" export:"true"`
+	// DiscoveryParams defines query parameters added to the openid-configuration discovery URL.
+	DiscoveryParams map[string]string `json:"discoveryParams,omitempty" toml:"discoveryParams,omitempty" yaml:"discoveryParams,omitempty" export:"true"`
+	// Scopes defines the scopes to request.
+	Scopes []string `json:"scopes,omitempty" toml:"scopes,omitempty" yaml:"scopes,omitempty" export:"true"`
+	// AuthParams defines query parameters passed to the authorization endpoint.
+	AuthParams map[string]string `json:"authParams,omitempty" toml:"authParams,omitempty" yaml:"authParams,omitempty" export:"true"`
+	// DisableLogin disables redirections to the authentication provider.
+	DisableLogin bool `json:"disableLogin,omitempty" toml:"disableLogin,omitempty" yaml:"disableLogin,omitempty" export:"true"`
+	// LoginURL defines the URL used to start authorization when needed.
+	LoginURL string `json:"loginUrl,omitempty" toml:"loginUrl,omitempty" yaml:"loginUrl,omitempty" export:"true"`
+	// LogoutURL defines the URL on which the session should be deleted in order to log users out.
+	LogoutURL string `json:"logoutUrl,omitempty" toml:"logoutUrl,omitempty" yaml:"logoutUrl,omitempty" export:"true"`
+	// PostLoginRedirectURL defines the URL to redirect to after successful login.
+	PostLoginRedirectURL string `json:"postLoginRedirectUrl,omitempty" toml:"postLoginRedirectUrl,omitempty" yaml:"postLoginRedirectUrl,omitempty" export:"true"`
+	// PostLogoutRedirectURL defines the URL to redirect to after logout.
+	PostLogoutRedirectURL string `json:"postLogoutRedirectUrl,omitempty" toml:"postLogoutRedirectUrl,omitempty" yaml:"postLogoutRedirectUrl,omitempty" export:"true"`
+	// BackchannelLogoutURL defines the URL called by the OIDC provider when a user logs out.
+	BackchannelLogoutURL string `json:"backchannelLogoutUrl,omitempty" toml:"backchannelLogoutUrl,omitempty" yaml:"backchannelLogoutUrl,omitempty" export:"true"`
+	// BackchannelLogoutSessionsRequired defines whether the sid claim is required for backchannel logout.
+	BackchannelLogoutSessionsRequired bool `json:"backchannelLogoutSessionsRequired,omitempty" toml:"backchannelLogoutSessionsRequired,omitempty" yaml:"backchannelLogoutSessionsRequired,omitempty" export:"true"`
+	// StateCookie defines the state cookie configuration.
+	StateCookie *OIDCStateCookie `json:"stateCookie,omitempty" toml:"stateCookie,omitempty" yaml:"stateCookie,omitempty" export:"true"`
+	// Session defines the session configuration.
+	Session *OIDCSession `json:"session,omitempty" toml:"session,omitempty" yaml:"session,omitempty" export:"true"`
+	// CSRF defines the CSRF protection configuration.
+	CSRF *OIDCCSRF `json:"csrf,omitempty" toml:"csrf,omitempty" yaml:"csrf,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCClientConfig defines the configuration used to connect to the OpenID Connect provider.
+type OIDCClientConfig struct {
+	// TLS defines the TLS configuration used to connect to the OpenID Connect provider.
+	TLS *types.ClientTLS `json:"tls,omitempty" toml:"tls,omitempty" yaml:"tls,omitempty" export:"true"`
+	// TimeoutSeconds defines the time before giving up requests to the provider.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty" toml:"timeoutSeconds,omitempty" yaml:"timeoutSeconds,omitempty" export:"true"`
+	// MaxRetries defines the number of retries for requests to the provider that fail.
+	MaxRetries int `json:"maxRetries,omitempty" toml:"maxRetries,omitempty" yaml:"maxRetries,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCStateCookie defines the state cookie configuration.
+type OIDCStateCookie struct {
+	Name     string `json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty" export:"true"`
+	Path     string `json:"path,omitempty" toml:"path,omitempty" yaml:"path,omitempty" export:"true"`
+	Domain   string `json:"domain,omitempty" toml:"domain,omitempty" yaml:"domain,omitempty" export:"true"`
+	MaxAge   int    `json:"maxAge,omitempty" toml:"maxAge,omitempty" yaml:"maxAge,omitempty" export:"true"`
+	SameSite string `json:"sameSite,omitempty" toml:"sameSite,omitempty" yaml:"sameSite,omitempty" export:"true"`
+	HTTPOnly *bool  `json:"httpOnly,omitempty" toml:"httpOnly,omitempty" yaml:"httpOnly,omitempty" export:"true"`
+	Secure   bool   `json:"secure,omitempty" toml:"secure,omitempty" yaml:"secure,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCSession defines the session configuration.
+type OIDCSession struct {
+	Name     string            `json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty" export:"true"`
+	Path     string            `json:"path,omitempty" toml:"path,omitempty" yaml:"path,omitempty" export:"true"`
+	Domain   string            `json:"domain,omitempty" toml:"domain,omitempty" yaml:"domain,omitempty" export:"true"`
+	Expiry   int               `json:"expiry,omitempty" toml:"expiry,omitempty" yaml:"expiry,omitempty" export:"true"`
+	Sliding  *bool             `json:"sliding,omitempty" toml:"sliding,omitempty" yaml:"sliding,omitempty" export:"true"`
+	Refresh  *bool             `json:"refresh,omitempty" toml:"refresh,omitempty" yaml:"refresh,omitempty" export:"true"`
+	SameSite string            `json:"sameSite,omitempty" toml:"sameSite,omitempty" yaml:"sameSite,omitempty" export:"true"`
+	HTTPOnly *bool             `json:"httpOnly,omitempty" toml:"httpOnly,omitempty" yaml:"httpOnly,omitempty" export:"true"`
+	Secure   bool              `json:"secure,omitempty" toml:"secure,omitempty" yaml:"secure,omitempty" export:"true"`
+	Store    *OIDCSessionStore `json:"store,omitempty" toml:"store,omitempty" yaml:"store,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCSessionStore defines the session store configuration.
+type OIDCSessionStore struct {
+	Redis *OIDCRedis `json:"redis,omitempty" toml:"redis,omitempty" yaml:"redis,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCRedis holds the Redis configuration for OIDC session storage.
+type OIDCRedis struct {
+	Endpoints []string           `json:"endpoints,omitempty" toml:"endpoints,omitempty" yaml:"endpoints,omitempty" export:"true"`
+	Username  string             `json:"username,omitempty" toml:"username,omitempty" yaml:"username,omitempty" export:"true"`
+	Password  string             `json:"password,omitempty" toml:"password,omitempty" yaml:"password,omitempty" export:"true"`
+	Database  int                `json:"database,omitempty" toml:"database,omitempty" yaml:"database,omitempty" export:"true"`
+	Cluster   bool               `json:"cluster,omitempty" toml:"cluster,omitempty" yaml:"cluster,omitempty" export:"true"`
+	TLS       *types.ClientTLS   `json:"tls,omitempty" toml:"tls,omitempty" yaml:"tls,omitempty" export:"true"`
+	Sentinel  *OIDCRedisSentinel `json:"sentinel,omitempty" toml:"sentinel,omitempty" yaml:"sentinel,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCRedisSentinel holds the Redis Sentinel configuration for OIDC session storage.
+type OIDCRedisSentinel struct {
+	MasterSet string `json:"masterSet,omitempty" toml:"masterSet,omitempty" yaml:"masterSet,omitempty" export:"true"`
+	Username  string `json:"username,omitempty" toml:"username,omitempty" yaml:"username,omitempty" export:"true"`
+	Password  string `json:"password,omitempty" toml:"password,omitempty" yaml:"password,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCCSRF holds the CSRF protection configuration.
+type OIDCCSRF struct {
+	Secure     bool   `json:"secure,omitempty" toml:"secure,omitempty" yaml:"secure,omitempty" export:"true"`
+	HeaderName string `json:"headerName,omitempty" toml:"headerName,omitempty" yaml:"headerName,omitempty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -299,6 +472,8 @@ type ClientTLS struct {
 type Headers struct {
 	// CustomRequestHeaders defines the header names and values to apply to the request.
 	CustomRequestHeaders map[string]string `json:"customRequestHeaders,omitempty" toml:"customRequestHeaders,omitempty" yaml:"customRequestHeaders,omitempty" export:"true"`
+	// HeadersTemplateDelim defines the template delim character(s), default: [ "{{", "}}" ]
+	HeadersTemplateDelim []string `json:"headersTemplateDelim,omitempty" toml:"headersTemplateDelim,omitempty" yaml:"headersTemplateDelim,omitempty" export:"true"`
 	// CustomResponseHeaders defines the header names and values to apply to the response.
 	CustomResponseHeaders map[string]string `json:"customResponseHeaders,omitempty" toml:"customResponseHeaders,omitempty" yaml:"customResponseHeaders,omitempty" export:"true"`
 

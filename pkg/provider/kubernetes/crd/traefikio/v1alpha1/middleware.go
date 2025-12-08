@@ -41,6 +41,8 @@ type MiddlewareSpec struct {
 	RedirectRegex     *dynamic.RedirectRegex     `json:"redirectRegex,omitempty"`
 	RedirectScheme    *dynamic.RedirectScheme    `json:"redirectScheme,omitempty"`
 	BasicAuth         *BasicAuth                 `json:"basicAuth,omitempty"`
+	APIKey            *APIKey                    `json:"apiKey,omitempty"`
+	OIDC              *OIDC                      `json:"oidc,omitempty"`
 	DigestAuth        *DigestAuth                `json:"digestAuth,omitempty"`
 	ForwardAuth       *ForwardAuth               `json:"forwardAuth,omitempty"`
 	InFlightReq       *dynamic.InFlightReq       `json:"inFlightReq,omitempty"`
@@ -131,6 +133,141 @@ type BasicAuth struct {
 	// HeaderField defines a header field to store the authenticated user.
 	// More info: https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/basicauth/#headerfield
 	HeaderField string `json:"headerField,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// APIKey holds the API key authentication middleware configuration.
+// This middleware restricts access to your services to known API keys.
+// More info: https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/apikey/
+type APIKey struct {
+	// KeySource defines where to read the API key from.
+	KeySource *APIKeySource `json:"keySource,omitempty"`
+	// SecretNonBase64Encoded defines whether the secret sent by the client is base64 encoded.
+	SecretNonBase64Encoded bool `json:"secretNonBase64Encoded,omitempty"`
+	// SecretValues contains the hashed API keys.
+	// Supported hashing algorithms are Bcrypt, SHA1 and MD5.
+	// The hash should be generated using htpasswd.
+	SecretValues []string `json:"secretValues,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// APIKeySource defines where to read the API key from.
+type APIKeySource struct {
+	// Header defines the header name containing the secret sent by the client.
+	Header string `json:"header,omitempty"`
+	// HeaderAuthScheme defines the scheme when using Authorization as header name.
+	HeaderAuthScheme string `json:"headerAuthScheme,omitempty"`
+	// Query defines the query parameter name containing the secret sent by the client.
+	Query string `json:"query,omitempty"`
+	// Cookie defines the cookie name containing the secret sent by the client.
+	Cookie string `json:"cookie,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDC holds the OpenID Connect authentication middleware configuration.
+// This middleware restricts access to your services by delegating authentication to an OpenID Connect provider.
+// More info: https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/oidc/
+type OIDC struct {
+	Issuer                            string            `json:"issuer,omitempty"`
+	RedirectURL                       string            `json:"redirectUrl,omitempty"`
+	ClientID                          string            `json:"clientID,omitempty"`
+	ClientSecret                      string            `json:"clientSecret,omitempty"`
+	Claims                            string            `json:"claims,omitempty"`
+	UsernameClaim                     string            `json:"usernameClaim,omitempty"`
+	ForwardHeaders                    map[string]string `json:"forwardHeaders,omitempty"`
+	ClientConfig                      *OIDCClientConfig `json:"clientConfig,omitempty"`
+	PKCE                              bool              `json:"pkce,omitempty"`
+	DiscoveryParams                   map[string]string `json:"discoveryParams,omitempty"`
+	Scopes                            []string          `json:"scopes,omitempty"`
+	AuthParams                        map[string]string `json:"authParams,omitempty"`
+	DisableLogin                      bool              `json:"disableLogin,omitempty"`
+	LoginURL                          string            `json:"loginUrl,omitempty"`
+	LogoutURL                         string            `json:"logoutUrl,omitempty"`
+	PostLoginRedirectURL              string            `json:"postLoginRedirectUrl,omitempty"`
+	PostLogoutRedirectURL             string            `json:"postLogoutRedirectUrl,omitempty"`
+	BackchannelLogoutURL              string            `json:"backchannelLogoutUrl,omitempty"`
+	BackchannelLogoutSessionsRequired bool              `json:"backchannelLogoutSessionsRequired,omitempty"`
+	StateCookie                       *OIDCStateCookie  `json:"stateCookie,omitempty"`
+	Session                           *OIDCSession      `json:"session,omitempty"`
+	CSRF                              *OIDCCSRF         `json:"csrf,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCClientConfig defines the configuration used to connect to the OpenID Connect provider.
+type OIDCClientConfig struct {
+	TLS            *ClientTLS `json:"tls,omitempty"`
+	TimeoutSeconds int        `json:"timeoutSeconds,omitempty"`
+	MaxRetries     int        `json:"maxRetries,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCStateCookie defines the state cookie configuration.
+type OIDCStateCookie struct {
+	Name     string `json:"name,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Domain   string `json:"domain,omitempty"`
+	MaxAge   int    `json:"maxAge,omitempty"`
+	SameSite string `json:"sameSite,omitempty"`
+	HTTPOnly *bool  `json:"httpOnly,omitempty"`
+	Secure   bool   `json:"secure,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCSession defines the session configuration.
+type OIDCSession struct {
+	Name     string            `json:"name,omitempty"`
+	Path     string            `json:"path,omitempty"`
+	Domain   string            `json:"domain,omitempty"`
+	Expiry   int               `json:"expiry,omitempty"`
+	Sliding  *bool             `json:"sliding,omitempty"`
+	Refresh  *bool             `json:"refresh,omitempty"`
+	SameSite string            `json:"sameSite,omitempty"`
+	HTTPOnly *bool             `json:"httpOnly,omitempty"`
+	Secure   bool              `json:"secure,omitempty"`
+	Store    *OIDCSessionStore `json:"store,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCSessionStore defines the session store configuration.
+type OIDCSessionStore struct {
+	Redis *OIDCRedis `json:"redis,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCRedis holds the Redis configuration for OIDC session storage.
+type OIDCRedis struct {
+	Endpoints []string           `json:"endpoints,omitempty"`
+	Username  string             `json:"username,omitempty"`
+	Password  string             `json:"password,omitempty"`
+	Database  int                `json:"database,omitempty"`
+	Cluster   bool               `json:"cluster,omitempty"`
+	TLS       *ClientTLS         `json:"tls,omitempty"`
+	Sentinel  *OIDCRedisSentinel `json:"sentinel,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCRedisSentinel holds the Redis Sentinel configuration for OIDC session storage.
+type OIDCRedisSentinel struct {
+	MasterSet string `json:"masterSet,omitempty"`
+	Username  string `json:"username,omitempty"`
+	Password  string `json:"password,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// OIDCCSRF holds the CSRF protection configuration.
+type OIDCCSRF struct {
+	Secure     bool   `json:"secure,omitempty"`
+	HeaderName string `json:"headerName,omitempty"`
 }
 
 // +k8s:deepcopy-gen=true
