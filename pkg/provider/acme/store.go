@@ -1,5 +1,7 @@
 package acme
 
+import "context"
+
 // StoredData represents the data managed by Store.
 type StoredData struct {
 	Account      *Account
@@ -10,6 +12,8 @@ type StoredData struct {
 type Store interface {
 	GetAccount(resolverName string) (*Account, error)
 	SaveAccount(resolverName string, account *Account) error
-	GetCertificates(resolverName string) ([]*CertAndStore, error)
+	GetCertificates(resolverName string, force ...bool) ([]*CertAndStore, error)
 	SaveCertificates(resolverName string, certificates []*CertAndStore) error
+	DoWithLock(ctx context.Context, f func(context.Context) error) error
+	IsLocked(ctx context.Context) (bool, error)
 }
