@@ -42,6 +42,7 @@ type Middleware struct {
 	Retry             *Retry             `json:"retry,omitempty" toml:"retry,omitempty" yaml:"retry,omitempty" export:"true"`
 	ContentType       *ContentType       `json:"contentType,omitempty" toml:"contentType,omitempty" yaml:"contentType,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 	GrpcWeb           *GrpcWeb           `json:"grpcWeb,omitempty" toml:"grpcWeb,omitempty" yaml:"grpcWeb,omitempty" export:"true"`
+	GeoIP             *GeoIP             `json:"geoIP,omitempty" toml:"geoIP,omitempty" yaml:"geoIP,omitempty" export:"true"`
 
 	Plugin map[string]PluginConf `json:"plugin,omitempty" toml:"plugin,omitempty" yaml:"plugin,omitempty" export:"true"`
 
@@ -50,6 +51,16 @@ type Middleware struct {
 	ResponseHeaderModifier *HeaderModifier  `json:"responseHeaderModifier,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	RequestRedirect        *RequestRedirect `json:"requestRedirect,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	URLRewrite             *URLRewrite      `json:"URLRewrite,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// GeoIP configures the Geographic Location information based on incoming IP address from `.mmdb` providers such as MaxMind
+type GeoIP struct {
+	DbPath     []string `json:"dbPath,omitempty" toml:"dbPath,omitempty" yaml:"dbPath,omitempty"`
+	Debug      bool     `json:"debug,omitempty" toml:"debug,omitempty" yaml:"debug,omitempty"`
+	ExcludeIPs []string `json:"excludeIPs,omitempty" toml:"excludeIPs,omitempty" yaml:"excludeIPs,omitempty"`
+	SetRealIP  bool     `json:"setRealIP,omitempty" toml:"setRealIP" yaml:"setRealIP,omitempty"` //nolint:tagliatelle
 }
 
 // +k8s:deepcopy-gen=true
@@ -299,6 +310,8 @@ type ClientTLS struct {
 type Headers struct {
 	// CustomRequestHeaders defines the header names and values to apply to the request.
 	CustomRequestHeaders map[string]string `json:"customRequestHeaders,omitempty" toml:"customRequestHeaders,omitempty" yaml:"customRequestHeaders,omitempty" export:"true"`
+	// HeadersTemplateDelim defines the template delim character(s), default: [ "{{", "}}" ]
+	HeadersTemplateDelim []string `json:"headersTemplateDelim,omitempty" toml:"headersTemplateDelim,omitempty" yaml:"headersTemplateDelim,omitempty" export:"true"`
 	// CustomResponseHeaders defines the header names and values to apply to the response.
 	CustomResponseHeaders map[string]string `json:"customResponseHeaders,omitempty" toml:"customResponseHeaders,omitempty" yaml:"customResponseHeaders,omitempty" export:"true"`
 

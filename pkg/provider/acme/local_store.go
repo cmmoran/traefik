@@ -41,11 +41,11 @@ func (s *LocalStore) save(resolverName string, storedData *StoredData) {
 	s.saveDataChan <- s.unSafeCopyOfStoredData()
 }
 
-func (s *LocalStore) get(resolverName string) (*StoredData, error) {
+func (s *LocalStore) get(resolverName string, force ...bool) (*StoredData, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if s.storedData == nil {
+	if s.storedData == nil || (len(force) > 0 && force[0] == true) {
 		s.storedData = map[string]*StoredData{}
 
 		hasData, err := CheckFile(s.filename)
@@ -164,8 +164,8 @@ func (s *LocalStore) SaveAccount(resolverName string, account *Account) error {
 }
 
 // GetCertificates returns ACME Certificates list.
-func (s *LocalStore) GetCertificates(resolverName string) ([]*CertAndStore, error) {
-	storedData, err := s.get(resolverName)
+func (s *LocalStore) GetCertificates(resolverName string, force ...bool) ([]*CertAndStore, error) {
+	storedData, err := s.get(resolverName, force...)
 	if err != nil {
 		return nil, err
 	}
@@ -184,4 +184,12 @@ func (s *LocalStore) SaveCertificates(resolverName string, certificates []*CertA
 	s.save(resolverName, storedData)
 
 	return nil
+}
+
+func (s *LocalStore) DoWithLock(ctx context.Context, f func(context.Context) error) error {
+	return f(ctx)
+}
+
+func (s *LocalStore) IsLocked(_ context.Context) (bool, error) {
+	return false, nil
 }
