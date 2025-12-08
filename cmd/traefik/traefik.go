@@ -36,9 +36,11 @@ import (
 	"github.com/traefik/traefik/v3/pkg/observability/tracing"
 	otypes "github.com/traefik/traefik/v3/pkg/observability/types"
 	"github.com/traefik/traefik/v3/pkg/provider/acme"
+	"github.com/traefik/traefik/v3/pkg/provider/acmeredux"
 	"github.com/traefik/traefik/v3/pkg/provider/aggregator"
 	"github.com/traefik/traefik/v3/pkg/provider/tailscale"
 	"github.com/traefik/traefik/v3/pkg/provider/traefik"
+	"github.com/traefik/traefik/v3/pkg/provider/vaultpki"
 	"github.com/traefik/traefik/v3/pkg/proxy"
 	"github.com/traefik/traefik/v3/pkg/proxy/httputil"
 	"github.com/traefik/traefik/v3/pkg/redactor"
@@ -197,10 +199,15 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 	}
 
 	acmeProviders := initACMEProvider(staticConfiguration, providerAggregator, tlsManager, httpChallengeProvider, tlsChallengeProvider, routinesPool)
+	acmeReduxProviders := initACMEReduxProvider(staticConfiguration, providerAggregator, tlsManager, httpChallengeProvider, tlsChallengeProvider, routinesPool)
 
 	// Tailscale
 
 	tsProviders := initTailscaleProviders(staticConfiguration, providerAggregator)
+
+	// VaultPKI Server
+
+	initVaultPKIServerProviders(staticConfiguration, providerAggregator)
 
 	// Observability
 
@@ -294,7 +301,24 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 		log.Info().Msg("Successfully obtained SPIFFE SVID.")
 	}
 
-	transportManager := service.NewTransportManager(spiffeX509Source)
+	vaultPKIConfigs := map[string]*vaultpki.Configuration{}
+	for name, resolver := range staticConfiguration.CertificatesResolvers {
+		if resolver.VaultPKIClient == nil {
+			continue
+		}
+		cfg := *resolver.VaultPKIClient
+		cfg.SetDefaults()
+		vaultPKIConfigs[name] = &cfg
+	}
+	var vaultPKIManager *vaultpki.Manager
+	if len(vaultPKIConfigs) > 0 {
+		vaultPKIManager = vaultpki.NewManager(vaultPKIConfigs)
+	}
+
+	transportManager := service.NewTransportManager(
+		spiffeX509Source,
+		service.WithVaultPKIManager(vaultPKIManager),
+	)
 
 	var proxyBuilder service.ProxyBuilder = httputil.NewProxyBuilder(transportManager, semConvMetricRegistry)
 	if staticConfiguration.Experimental != nil && staticConfiguration.Experimental.FastProxy != nil {
@@ -302,7 +326,7 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 	}
 
 	dialerManager := tcp.NewDialerManager(spiffeX509Source)
-	acmeHTTPHandler := getHTTPChallengeHandler(acmeProviders, httpChallengeProvider)
+	acmeHTTPHandler := getHTTPChallengeHandler(acmeProviders, acmeReduxProviders, httpChallengeProvider)
 	managerFactory := service.NewManagerFactory(*staticConfiguration, routinesPool, observabilityMgr, transportManager, proxyBuilder, acmeHTTPHandler)
 
 	// Router factory
@@ -371,6 +395,11 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 		resolverNames[p.ResolverName] = struct{}{}
 		watcher.AddListener(p.ListenConfiguration)
 	}
+	// ACME Redux
+	for _, p := range acmeReduxProviders {
+		resolverNames[p.ResolverName] = struct{}{}
+		watcher.AddListener(p.ListenConfiguration)
+	}
 
 	// Tailscale
 	for _, p := range tsProviders {
@@ -395,12 +424,20 @@ func setupServer(staticConfiguration *static.Configuration) (*server.Server, err
 	return server.NewServer(routinesPool, serverEntryPointsTCP, serverEntryPointsUDP, watcher, observabilityMgr), nil
 }
 
-func getHTTPChallengeHandler(acmeProviders []*acme.Provider, httpChallengeProvider http.Handler) http.Handler {
+func getHTTPChallengeHandler(acmeProviders []*acme.Provider, acmeReduxProviders []*acmeredux.Provider, httpChallengeProvider http.Handler) http.Handler {
 	var acmeHTTPHandler http.Handler
 	for _, p := range acmeProviders {
 		if p != nil && p.HTTPChallenge != nil {
 			acmeHTTPHandler = httpChallengeProvider
 			break
+		}
+	}
+	if acmeHTTPHandler == nil {
+		for _, p := range acmeReduxProviders {
+			if p != nil && p.HTTPChallenge != nil {
+				acmeHTTPHandler = httpChallengeProvider
+				break
+			}
 		}
 	}
 	return acmeHTTPHandler
@@ -488,6 +525,49 @@ func initACMEProvider(c *static.Configuration, providerAggregator *aggregator.Pr
 	return resolvers
 }
 
+// initACMEReduxProvider creates and registers acmeredux.Provider instances corresponding to the configured ACME Redux certificate resolvers.
+func initACMEReduxProvider(c *static.Configuration, providerAggregator *aggregator.ProviderAggregator, tlsManager *traefiktls.Manager, httpChallengeProvider, tlsChallengeProvider challenge.Provider, routinesPool *safe.Pool) []*acmeredux.Provider {
+	vaultStores := map[string]*acmeredux.VaultStore{}
+
+	var resolvers []*acmeredux.Provider
+	for name, resolver := range c.CertificatesResolvers {
+		if resolver.AcmeRedux == nil {
+			continue
+		}
+
+		if resolver.AcmeRedux.VaultStorage == nil {
+			log.Error().Str("resolver", name).Msg("ACME Redux resolver requires vaultStorage configuration")
+			continue
+		}
+
+		if vaultStores[resolver.AcmeRedux.VaultStorage.Key] == nil {
+			log.Info().Msgf("Traefik initializing Vault storage for url: %s", resolver.AcmeRedux.VaultStorage.Url)
+			vaultStores[resolver.AcmeRedux.VaultStorage.Key] = acmeredux.NewVaultStore(resolver.AcmeRedux.VaultStorage.Key, resolver.AcmeRedux.VaultStorage, routinesPool)
+		}
+
+		p := &acmeredux.Provider{
+			Configuration:         resolver.AcmeRedux,
+			Store:                 vaultStores[resolver.AcmeRedux.VaultStorage.Key],
+			ResolverName:          name,
+			HTTPChallengeProvider: httpChallengeProvider,
+			TLSChallengeProvider:  tlsChallengeProvider,
+		}
+
+		if err := providerAggregator.AddProvider(p); err != nil {
+			log.Error().Err(err).Str("resolver", name).Msg("The ACME Redux resolve is skipped from the resolvers list")
+			continue
+		}
+
+		p.SetTLSManager(tlsManager)
+		p.SetConfigListenerChan(make(chan dynamic.Configuration))
+		p.SetCertsMayChangeChan(make(chan bool, 1))
+
+		resolvers = append(resolvers, p)
+	}
+
+	return resolvers
+}
+
 // initTailscaleProviders creates and registers tailscale.Provider instances corresponding to the configured Tailscale certificate resolvers.
 func initTailscaleProviders(cfg *static.Configuration, providerAggregator *aggregator.ProviderAggregator) []*tailscale.Provider {
 	var providers []*tailscale.Provider
@@ -506,6 +586,29 @@ func initTailscaleProviders(cfg *static.Configuration, providerAggregator *aggre
 		providers = append(providers, tsProvider)
 	}
 
+	return providers
+}
+
+// initVaultPKIServerProviders creates and registers vaultpki.ServerProvider instances corresponding to the configured Vault PKI server resolvers.
+func initVaultPKIServerProviders(cfg *static.Configuration, providerAggregator *aggregator.ProviderAggregator) []*vaultpki.ServerProvider {
+	var providers []*vaultpki.ServerProvider
+	for name, resolver := range cfg.CertificatesResolvers {
+		if resolver.VaultPKIServer == nil {
+			continue
+		}
+
+		serverProvider := &vaultpki.ServerProvider{
+			ResolverName: name,
+			Config:       resolver.VaultPKIServer,
+		}
+
+		if err := providerAggregator.AddProvider(serverProvider); err != nil {
+			log.Error().Err(err).Str(logs.ProviderName, name).Msg("Unable to create Vault PKI server provider")
+			continue
+		}
+
+		providers = append(providers, serverProvider)
+	}
 	return providers
 }
 

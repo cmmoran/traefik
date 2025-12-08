@@ -75,21 +75,30 @@ labels:
 | Field                                                                              | Description                                                                                                                                                                                                    | Default   | Required |
 |:-----------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------|:---------|
 | <a id="opt-options" href="#opt-options" title="#opt-options">`options`</a> | The name of the TLS options to use for configuring TLS parameters (cipher suites, min/max TLS version, client authentication, etc.). See [TLS Options](./tls-options.md) for detailed configuration.           | `default` | No       |
-| <a id="opt-certResolver" href="#opt-certResolver" title="#opt-certResolver">`certResolver`</a> | The name of the certificate resolver to use for automatic certificate generation via ACME providers (such as Let's Encrypt). See the [Certificate Resolver](./#certificate-resolver) section for more details. | ""        | No       |
+| <a id="opt-certResolver" href="#opt-certResolver" title="#opt-certResolver">`certResolver`</a> | The name of the certificate resolver to use for automatic certificate generation. See the [Certificate Resolver](./#certificate-resolver) section for more details.                                          | ""        | No       |
 | <a id="opt-domains" href="#opt-domains" title="#opt-domains">`domains`</a> | List of domains and Subject Alternative Names (SANs) for explicit certificate domain specification. See the [Custom Domains](./#custom-domains) section for more details.                                      | []        | No       |
+| <a id="opt-certResolverOptions" href="#opt-certResolverOptions" title="#opt-certResolverOptions">`certResolverOptions`</a> | Resolver-specific overrides for certificate issuance. See the [Certificate Resolver Options](./#certificate-resolver-options) section for more details.                                                      | null      | No       |
 
 ## Certificate Resolver
 
-The `tls.certResolver` option allows you to specify a certificate resolver for automatic certificate generation via ACME providers (such as Let's Encrypt).
+The `tls.certResolver` option allows you to specify a certificate resolver for automatic certificate generation.
 
 When a certificate resolver is configured for a router,
 Traefik will automatically obtain and manage TLS certificates for the domains specified in the router's rule (in the `Host` matcher) or in the `tls.domains` configuration (with `tls.domains` taking precedence).
 
 !!! important "Prerequisites"
 
-    - Certificate resolvers must be defined in the [static configuration](../../../install-configuration/tls/certificate-resolvers/acme.md)
+    - Certificate resolvers must be defined in the [static configuration](../../../install-configuration/tls/certificate-resolvers/overview.md)
     - The router must have `tls` enabled
-    - An ACME challenge type must be configured for the certificate resolver
+    - Some resolvers require additional configuration steps (see their documentation)
+
+## Certificate Resolver Options
+
+The `tls.certResolverOptions` option provides resolver-specific overrides.
+It is optional and only applies to resolvers that support overrides.
+
+For Vault/OpenBao PKI, use `tls.certResolverOptions.vaultPKI` to override issue parameters such as `uriSans` and `ttl`.
+See the [Vault/OpenBao PKI resolver](../../../install-configuration/tls/certificate-resolvers/vaultpki.md) for examples.
 
 ## Custom Domains
 

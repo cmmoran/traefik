@@ -142,7 +142,13 @@ func (c *CertificateStore) GetCertificate(domains []string) *CertificateData {
 		return nil
 	}
 
-	sort.Strings(domains)
+	if len(domains) == 0 {
+		return nil
+	}
+	// Expect domains[0] to be the main domain and domains[1:] to be SANs.
+	if len(domains) > 1 {
+		sort.Strings(domains[1:])
+	}
 	domainsKey := strings.Join(domains, ",")
 
 	if cert, ok := c.CertCache.Get(domainsKey); ok {

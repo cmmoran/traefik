@@ -21,6 +21,8 @@ Middlewares that use the same protocol can be combined into chains to fit every 
 | Middleware                                                                                                                               | Purpose                                           | Area                        |
 |------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|-----------------------------|
 | <a id="opt-AddPrefix" href="#opt-AddPrefix" title="#opt-AddPrefix">[AddPrefix](addprefix.md)</a> | Adds a Path Prefix                                | Path Modifier               |
+| <a id="opt-APIKey" href="#opt-APIKey" title="#opt-APIKey">[APIKey](apikey.md)</a> | Adds API Key Authentication                       | Security, Authentication    |
+| <a id="opt-OIDC" href="#opt-OIDC" title="#opt-OIDC">[OIDC](oidc.md)</a> | Adds OpenID Connect Authentication                | Security, Authentication    |
 | <a id="opt-BasicAuth" href="#opt-BasicAuth" title="#opt-BasicAuth">[BasicAuth](basicauth.md)</a> | Adds Basic Authentication                         | Security, Authentication    |
 | <a id="opt-Buffering" href="#opt-Buffering" title="#opt-Buffering">[Buffering](buffering.md)</a> | Buffers the request/response                      | Request Lifecycle           |
 | <a id="opt-Chain" href="#opt-Chain" title="#opt-Chain">[Chain](chain.md)</a> | Combines multiple pieces of middleware            | Misc                        |
@@ -32,6 +34,7 @@ Middlewares that use the same protocol can be combined into chains to fit every 
 | <a id="opt-Errors" href="#opt-Errors" title="#opt-Errors">[Errors](errorpages.md)</a> | Defines custom error pages                        | Request Lifecycle           |
 | <a id="opt-ForwardAuth" href="#opt-ForwardAuth" title="#opt-ForwardAuth">[ForwardAuth](forwardauth.md)</a> | Delegates Authentication                          | Security, Authentication    |
 | <a id="opt-GrpcWeb" href="#opt-GrpcWeb" title="#opt-GrpcWeb">[GrpcWeb](grpcweb.md)</a> | Converts gRPC Web requests to HTTP/2 gRPC requests.                           | Request                   |
+| <a id="opt-GeoIP" href="#opt-GeoIP" title="#opt-GeoIP">[GeoIP](geoip.md)</a> | Adds GeoIP headers from MMDB files                | Security, Request lifecycle |
 | <a id="opt-Headers" href="#opt-Headers" title="#opt-Headers">[Headers](headers.md)</a> | Adds / Updates headers                            | Security                    |
 | <a id="opt-IPAllowList" href="#opt-IPAllowList" title="#opt-IPAllowList">[IPAllowList](ipallowlist.md)</a> | Limits the allowed client IPs                     | Security, Request lifecycle |
 | <a id="opt-InFlightReq" href="#opt-InFlightReq" title="#opt-InFlightReq">[InFlightReq](inflightreq.md)</a> | Limits the number of simultaneous connections     | Security, Request lifecycle |

@@ -15,6 +15,7 @@ import (
 	otypes "github.com/traefik/traefik/v3/pkg/observability/types"
 	"github.com/traefik/traefik/v3/pkg/ping"
 	acmeprovider "github.com/traefik/traefik/v3/pkg/provider/acme"
+	"github.com/traefik/traefik/v3/pkg/provider/acmeredux"
 	"github.com/traefik/traefik/v3/pkg/provider/consulcatalog"
 	"github.com/traefik/traefik/v3/pkg/provider/docker"
 	"github.com/traefik/traefik/v3/pkg/provider/ecs"
@@ -31,6 +32,7 @@ import (
 	"github.com/traefik/traefik/v3/pkg/provider/kv/zk"
 	"github.com/traefik/traefik/v3/pkg/provider/nomad"
 	"github.com/traefik/traefik/v3/pkg/provider/rest"
+	"github.com/traefik/traefik/v3/pkg/provider/vaultpki"
 	"github.com/traefik/traefik/v3/pkg/tls"
 	"github.com/traefik/traefik/v3/pkg/types"
 )
@@ -106,8 +108,11 @@ type SpiffeClientConfig struct {
 
 // CertificateResolver contains the configuration for the different types of certificates resolver.
 type CertificateResolver struct {
-	ACME      *acmeprovider.Configuration `description:"Enables ACME (Let's Encrypt) automatic SSL." json:"acme,omitempty" toml:"acme,omitempty" yaml:"acme,omitempty" export:"true"`
-	Tailscale *struct{}                   `description:"Enables Tailscale certificate resolution." json:"tailscale,omitempty" toml:"tailscale,omitempty" yaml:"tailscale,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
+	ACME           *acmeprovider.Configuration `description:"Enables ACME (Let's Encrypt) automatic SSL." json:"acme,omitempty" toml:"acme,omitempty" yaml:"acme,omitempty" export:"true"`
+	AcmeRedux      *acmeredux.Configuration    `description:"Enables ACME Redux certificate resolution (Vault-backed storage + locking)." json:"acmeRedux,omitempty" toml:"acmeRedux,omitempty" yaml:"acmeRedux,omitempty" export:"true"`
+	VaultPKIClient *vaultpki.Configuration     `description:"Enables Vault/OpenBao PKI client certificate resolution." json:"vaultPKIClient,omitempty" toml:"vaultPKIClient,omitempty" yaml:"vaultPKIClient,omitempty" export:"true"`
+	VaultPKIServer *vaultpki.Configuration     `description:"Enables Vault/OpenBao PKI server certificate resolution." json:"vaultPKIServer,omitempty" toml:"vaultPKIServer,omitempty" yaml:"vaultPKIServer,omitempty" export:"true"`
+	Tailscale      *struct{}                   `description:"Enables Tailscale certificate resolution." json:"tailscale,omitempty" toml:"tailscale,omitempty" yaml:"tailscale,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 }
 
 // Global holds the global configuration.
@@ -401,6 +406,21 @@ func (c *Configuration) ValidateConfiguration() error {
 	for name, resolver := range c.CertificatesResolvers {
 		if resolver.ACME != nil && resolver.Tailscale != nil {
 			return fmt.Errorf("unable to initialize certificates resolver %q, as ACME and Tailscale providers are mutually exclusive", name)
+		}
+		if resolver.VaultPKIClient != nil && resolver.ACME != nil {
+			return fmt.Errorf("unable to initialize certificates resolver %q, as VaultPKIClient and ACME providers are mutually exclusive", name)
+		}
+		if resolver.VaultPKIClient != nil && resolver.Tailscale != nil {
+			return fmt.Errorf("unable to initialize certificates resolver %q, as VaultPKIClient and Tailscale providers are mutually exclusive", name)
+		}
+		if resolver.VaultPKIServer != nil && resolver.ACME != nil {
+			return fmt.Errorf("unable to initialize certificates resolver %q, as VaultPKIServer and ACME providers are mutually exclusive", name)
+		}
+		if resolver.VaultPKIServer != nil && resolver.Tailscale != nil {
+			return fmt.Errorf("unable to initialize certificates resolver %q, as VaultPKIServer and Tailscale providers are mutually exclusive", name)
+		}
+		if resolver.VaultPKIServer != nil && resolver.VaultPKIClient != nil {
+			return fmt.Errorf("unable to initialize certificates resolver %q, as VaultPKIServer and VaultPKIClient providers are mutually exclusive", name)
 		}
 
 		if resolver.ACME == nil {

@@ -20,6 +20,7 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/svid/x509svid"
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	"github.com/traefik/traefik/v3/pkg/provider/vaultpki"
 	traefiktls "github.com/traefik/traefik/v3/pkg/tls"
 	"github.com/traefik/traefik/v3/pkg/types"
 )
@@ -38,16 +39,33 @@ type TransportManager struct {
 	tlsConfigs    map[string]*tls.Config
 
 	spiffeX509Source SpiffeX509Source
+	vaultPKIManager  *vaultpki.Manager
+}
+
+// TransportManagerOption configures a TransportManager.
+type TransportManagerOption func(*TransportManager)
+
+// WithVaultPKIManager configures the Vault PKI manager used for client certificates.
+func WithVaultPKIManager(vaultPKIManager *vaultpki.Manager) TransportManagerOption {
+	return func(manager *TransportManager) {
+		manager.vaultPKIManager = vaultPKIManager
+	}
 }
 
 // NewTransportManager creates a new TransportManager.
-func NewTransportManager(spiffeX509Source SpiffeX509Source) *TransportManager {
-	return &TransportManager{
+func NewTransportManager(spiffeX509Source SpiffeX509Source, options ...TransportManagerOption) *TransportManager {
+	manager := &TransportManager{
 		roundTrippers:    make(map[string]http.RoundTripper),
 		configs:          make(map[string]*dynamic.ServersTransport),
 		tlsConfigs:       make(map[string]*tls.Config),
 		spiffeX509Source: spiffeX509Source,
 	}
+	for _, option := range options {
+		if option != nil {
+			option(manager)
+		}
+	}
+	return manager
 }
 
 // Update updates the transport configurations.
@@ -169,7 +187,16 @@ func (t *TransportManager) createTLSConfig(cfg *dynamic.ServersTransport) (*tls.
 		config = tlsconfig.MTLSClientConfig(t.spiffeX509Source, t.spiffeX509Source, spiffeAuthorizer)
 	}
 
-	if cfg.InsecureSkipVerify || len(cfg.RootCAs) > 0 || len(cfg.ServerName) > 0 || len(cfg.Certificates) > 0 || cfg.PeerCertURI != "" || len(cfg.CipherSuites) > 0 || cfg.MaxVersion != "" || cfg.MinVersion != "" {
+	if cfg.ClientCertResolver != "" && cfg.Spiffe != nil {
+		return nil, errors.New("Vault PKI client resolver cannot be used with SPIFFE configuration")
+	}
+
+	if cfg.ClientCertResolver != "" && len(cfg.Certificates) > 0 {
+		return nil, errors.New("Vault PKI client resolver cannot be used with static certificates")
+	}
+
+	hasTLSConfig := cfg.InsecureSkipVerify || len(cfg.RootCAs) > 0 || len(cfg.ServerName) > 0 || len(cfg.Certificates) > 0 || cfg.ClientCertResolver != "" || cfg.PeerCertURI != "" || len(cfg.CipherSuites) > 0 || cfg.MaxVersion != "" || cfg.MinVersion != ""
+	if hasTLSConfig {
 		if config != nil {
 			return nil, errors.New("TLS and SPIFFE configuration cannot be defined at the same time")
 		}
@@ -223,6 +250,21 @@ func (t *TransportManager) createTLSConfig(cfg *dynamic.ServersTransport) (*tls.
 			MaxVersion:         maxVersion,
 		}
 
+		if cfg.ClientCertResolver != "" {
+			if t.vaultPKIManager == nil {
+				return nil, errors.New("Vault PKI client resolver configured but manager is not available")
+			}
+			if cfg.ClientCertResolver != "vaultpki" && cfg.ClientCertResolver != "vaultPKI" && cfg.ClientCertResolver != "vault" {
+				return nil, fmt.Errorf("unknown client certificate resolver %q", cfg.ClientCertResolver)
+			}
+			source, err := t.vaultPKIManager.ClientCertSource(cfg.ClientCertResolver, toVaultPKIIssue(cfg.ClientCertResolverOptions))
+			if err != nil {
+				return nil, err
+			}
+			config.Certificates = nil
+			config.GetClientCertificate = source
+		}
+
 		if cfg.PeerCertURI != "" {
 			config.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 				return traefiktls.VerifyPeerCertificate(cfg.PeerCertURI, config, rawCerts)
@@ -231,6 +273,18 @@ func (t *TransportManager) createTLSConfig(cfg *dynamic.ServersTransport) (*tls.
 	}
 
 	return config, nil
+}
+
+func toVaultPKIIssue(cfg *dynamic.ClientCertResolverOptions) *vaultpki.IssueConfig {
+	if cfg == nil || cfg.VaultPKI == nil {
+		return nil
+	}
+	return &vaultpki.IssueConfig{
+		CommonName: cfg.VaultPKI.CommonName,
+		AltNames:   cfg.VaultPKI.AltNames,
+		URISans:    cfg.VaultPKI.URISans,
+		TTL:        cfg.VaultPKI.TTL,
+	}
 }
 
 // createRoundTripper creates an http.RoundTripper configured with the Transport configuration settings.

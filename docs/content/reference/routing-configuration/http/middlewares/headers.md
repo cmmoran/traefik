@@ -71,6 +71,69 @@ spec:
       X-Custom-Response-Header: "value"
 ```
 
+### Template-Based Request Headers
+
+Custom request headers can use templates evaluated against the `*http.Request`.
+This makes it possible to derive headers from request data or generate values when missing.
+
+The example below ensures a correlation ID is present, reusing the incoming header if set.
+
+```yaml tab="Structured (YAML)"
+http:
+  middlewares:
+    correlation:
+      headers:
+        customRequestHeaders:
+          X-Correlation-Id: '{{ if eq (header "X-Correlation-Id" .) "" }}{{ uuidv4 }}{{ else }}{{ header "X-Correlation-Id" . }}{{ end }}'
+```
+
+```toml tab="Structured (TOML)"
+[http.middlewares]
+  [http.middlewares.correlation.headers]
+    [http.middlewares.correlation.headers.customRequestHeaders]
+      X-Correlation-Id = "{{ if eq (header \"X-Correlation-Id\" .) \"\" }}{{ uuidv4 }}{{ else }}{{ header \"X-Correlation-Id\" . }}{{ end }}"
+```
+
+```yaml tab="Labels"
+labels:
+  - "traefik.http.middlewares.correlation.headers.customrequestheaders.X-Correlation-Id={{ if eq (header \"X-Correlation-Id\" .) \"\" }}{{ uuidv4 }}{{ else }}{{ header \"X-Correlation-Id\" . }}{{ end }}"
+```
+
+```json tab="Tags"
+{
+  "Tags": [
+    "traefik.http.middlewares.correlation.headers.customrequestheaders.X-Correlation-Id={{ if eq (header \"X-Correlation-Id\" .) \"\" }}{{ uuidv4 }}{{ else }}{{ header \"X-Correlation-Id\" . }}{{ end }}"
+  ]
+}
+```
+
+```yaml tab="Kubernetes"
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: correlation
+spec:
+  headers:
+    customRequestHeaders:
+      X-Correlation-Id: '{{ if eq (header "X-Correlation-Id" .) "" }}{{ uuidv4 }}{{ else }}{{ header "X-Correlation-Id" . }}{{ end }}'
+```
+
+### Template Delimiters
+
+By default, templates use `{{` and `}}`. Customize delimiters with `headersTemplateDelim`.
+
+```yaml tab="Structured (YAML)"
+http:
+  middlewares:
+    correlation:
+      headers:
+        headersTemplateDelim:
+          - "[["
+          - "]]"
+        customRequestHeaders:
+          X-Correlation-Id: '[[ if eq (header "X-Correlation-Id" .) "" ]][[ uuidv4 ]][[ else ]][[ header "X-Correlation-Id" . ]][[ end ]]'
+```
+
 ### Adding and Removing Headers
 
 In the following example, requests are proxied with an extra `X-Script-Name` header while their `X-Custom-Request-Header` header gets stripped,
