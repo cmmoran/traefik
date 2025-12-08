@@ -242,6 +242,12 @@ func (p *Provider) loadConfigurationFromCRD(ctx context.Context, client Client) 
 			continue
 		}
 
+		apiKey, err := createAPIKeyMiddleware(client, middleware.Namespace, middleware.Spec.APIKey)
+		if err != nil {
+			logger.Error().Err(err).Msg("Error while reading api key middleware")
+			continue
+		}
+
 		forwardAuth, err := createForwardAuthMiddleware(client, middleware.Namespace, middleware.Spec.ForwardAuth)
 		if err != nil {
 			logger.Error().Err(err).Msg("Error while reading forward auth middleware")
@@ -299,6 +305,7 @@ func (p *Provider) loadConfigurationFromCRD(ctx context.Context, client Client) 
 			RedirectRegex:     middleware.Spec.RedirectRegex,
 			RedirectScheme:    middleware.Spec.RedirectScheme,
 			BasicAuth:         basicAuth,
+			APIKey:            apiKey,
 			DigestAuth:        digestAuth,
 			ForwardAuth:       forwardAuth,
 			InFlightReq:       middleware.Spec.InFlightReq,
@@ -1145,6 +1152,41 @@ func createDigestAuthMiddleware(client Client, namespace string, digestAuth *tra
 		Realm:        digestAuth.Realm,
 		RemoveHeader: digestAuth.RemoveHeader,
 		HeaderField:  digestAuth.HeaderField,
+	}, nil
+}
+
+func createAPIKeyMiddleware(client Client, namespace string, apiKey *traefikv1alpha1.APIKey) (*dynamic.APIKey, error) {
+	if apiKey == nil {
+		return nil, nil
+	}
+
+	var keySource *dynamic.APIKeySource
+	if apiKey.KeySource != nil {
+		keySource = &dynamic.APIKeySource{
+			Header:           apiKey.KeySource.Header,
+			HeaderAuthScheme: apiKey.KeySource.HeaderAuthScheme,
+			Query:            apiKey.KeySource.Query,
+			Cookie:           apiKey.KeySource.Cookie,
+		}
+	}
+
+	secretValues := make([]string, 0, len(apiKey.SecretValues))
+	for _, secretValue := range apiKey.SecretValues {
+		if strings.HasPrefix(secretValue, "urn:k8s:secret:") {
+			resolved, err := getSecretValue(client, namespace, secretValue)
+			if err != nil {
+				return nil, err
+			}
+			secretValues = append(secretValues, resolved)
+			continue
+		}
+		secretValues = append(secretValues, secretValue)
+	}
+
+	return &dynamic.APIKey{
+		KeySource:              keySource,
+		SecretNonBase64Encoded: apiKey.SecretNonBase64Encoded,
+		SecretValues:           secretValues,
 	}, nil
 }
 

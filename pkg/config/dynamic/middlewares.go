@@ -33,6 +33,7 @@ type Middleware struct {
 	RedirectScheme    *RedirectScheme    `json:"redirectScheme,omitempty" toml:"redirectScheme,omitempty" yaml:"redirectScheme,omitempty" export:"true"`
 	BasicAuth         *BasicAuth         `json:"basicAuth,omitempty" toml:"basicAuth,omitempty" yaml:"basicAuth,omitempty" export:"true"`
 	DigestAuth        *DigestAuth        `json:"digestAuth,omitempty" toml:"digestAuth,omitempty" yaml:"digestAuth,omitempty" export:"true"`
+	APIKey            *APIKey            `json:"apiKey,omitempty" toml:"apiKey,omitempty" yaml:"apiKey,omitempty" export:"true"`
 	ForwardAuth       *ForwardAuth       `json:"forwardAuth,omitempty" toml:"forwardAuth,omitempty" yaml:"forwardAuth,omitempty" export:"true"`
 	InFlightReq       *InFlightReq       `json:"inFlightReq,omitempty" toml:"inFlightReq,omitempty" yaml:"inFlightReq,omitempty" export:"true"`
 	Buffering         *Buffering         `json:"buffering,omitempty" toml:"buffering,omitempty" yaml:"buffering,omitempty" export:"true"`
@@ -42,6 +43,7 @@ type Middleware struct {
 	Retry             *Retry             `json:"retry,omitempty" toml:"retry,omitempty" yaml:"retry,omitempty" export:"true"`
 	ContentType       *ContentType       `json:"contentType,omitempty" toml:"contentType,omitempty" yaml:"contentType,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 	GrpcWeb           *GrpcWeb           `json:"grpcWeb,omitempty" toml:"grpcWeb,omitempty" yaml:"grpcWeb,omitempty" export:"true"`
+	GeoIP             *GeoIP             `json:"geoIP,omitempty" toml:"geoIP,omitempty" yaml:"geoIP,omitempty" export:"true"`
 
 	Plugin map[string]PluginConf `json:"plugin,omitempty" toml:"plugin,omitempty" yaml:"plugin,omitempty" export:"true"`
 
@@ -50,6 +52,16 @@ type Middleware struct {
 	ResponseHeaderModifier *HeaderModifier  `json:"responseHeaderModifier,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	RequestRedirect        *RequestRedirect `json:"requestRedirect,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	URLRewrite             *URLRewrite      `json:"URLRewrite,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// GeoIP configures the Geographic Location information based on incoming IP address from `.mmdb` providers such as MaxMind
+type GeoIP struct {
+	DbPath     []string `json:"dbPath,omitempty" toml:"dbPath,omitempty" yaml:"dbPath,omitempty"`
+	Debug      bool     `json:"debug,omitempty" toml:"debug,omitempty" yaml:"debug,omitempty"`
+	ExcludeIPs []string `json:"excludeIPs,omitempty" toml:"excludeIPs,omitempty" yaml:"excludeIPs,omitempty"`
+	SetRealIP  bool     `json:"setRealIP,omitempty" toml:"setRealIP" yaml:"setRealIP,omitempty"` //nolint:tagliatelle
 }
 
 // +k8s:deepcopy-gen=true
@@ -106,6 +118,36 @@ type BasicAuth struct {
 	// HeaderField defines a header field to store the authenticated user.
 	// More info: https://doc.traefik.io/traefik/v3.6/middlewares/http/basicauth/#headerfield
 	HeaderField string `json:"headerField,omitempty" toml:"headerField,omitempty" yaml:"headerField,omitempty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// APIKey holds the API key authentication middleware configuration.
+// This middleware restricts access to your services to known API keys.
+// More info: https://doc.traefik.io/traefik/v3.6/middlewares/http/apikey/
+type APIKey struct {
+	// KeySource defines where to read the API key from.
+	KeySource *APIKeySource `json:"keySource,omitempty" toml:"keySource,omitempty" yaml:"keySource,omitempty" export:"true"`
+	// SecretNonBase64Encoded defines whether the secret sent by the client is base64 encoded.
+	SecretNonBase64Encoded bool `json:"secretNonBase64Encoded,omitempty" toml:"secretNonBase64Encoded,omitempty" yaml:"secretNonBase64Encoded,omitempty" export:"true"`
+	// SecretValues contains the hashed API keys.
+	// Supported hashing algorithms are Bcrypt, SHA1 and MD5.
+	// The hash should be generated using htpasswd.
+	SecretValues []string `json:"secretValues,omitempty" toml:"secretValues,omitempty" yaml:"secretValues,omitempty" loggable:"false"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// APIKeySource defines where to read the API key from.
+type APIKeySource struct {
+	// Header defines the header name containing the secret sent by the client.
+	Header string `json:"header,omitempty" toml:"header,omitempty" yaml:"header,omitempty" export:"true"`
+	// HeaderAuthScheme defines the scheme when using Authorization as header name.
+	HeaderAuthScheme string `json:"headerAuthScheme,omitempty" toml:"headerAuthScheme,omitempty" yaml:"headerAuthScheme,omitempty" export:"true"`
+	// Query defines the query parameter name containing the secret sent by the client.
+	Query string `json:"query,omitempty" toml:"query,omitempty" yaml:"query,omitempty" export:"true"`
+	// Cookie defines the cookie name containing the secret sent by the client.
+	Cookie string `json:"cookie,omitempty" toml:"cookie,omitempty" yaml:"cookie,omitempty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -299,6 +341,8 @@ type ClientTLS struct {
 type Headers struct {
 	// CustomRequestHeaders defines the header names and values to apply to the request.
 	CustomRequestHeaders map[string]string `json:"customRequestHeaders,omitempty" toml:"customRequestHeaders,omitempty" yaml:"customRequestHeaders,omitempty" export:"true"`
+	// HeadersTemplateDelim defines the template delim character(s), default: [ "{{", "}}" ]
+	HeadersTemplateDelim []string `json:"headersTemplateDelim,omitempty" toml:"headersTemplateDelim,omitempty" yaml:"headersTemplateDelim,omitempty" export:"true"`
 	// CustomResponseHeaders defines the header names and values to apply to the response.
 	CustomResponseHeaders map[string]string `json:"customResponseHeaders,omitempty" toml:"customResponseHeaders,omitempty" yaml:"customResponseHeaders,omitempty" export:"true"`
 

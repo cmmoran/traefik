@@ -886,6 +886,45 @@ spec:
                     - message: must start with a '/'
                       rule: self.startsWith('/')
                 type: object
+              apiKey:
+                description: |-
+                  APIKey holds the API key authentication middleware configuration.
+                  This middleware restricts access to your services to known API keys.
+                  More info: https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/apikey/
+                properties:
+                  keySource:
+                    description: KeySource defines where to read the API key from.
+                    properties:
+                      cookie:
+                        description: Cookie defines the cookie name containing the
+                          secret sent by the client.
+                        type: string
+                      header:
+                        description: Header defines the header name containing the
+                          secret sent by the client.
+                        type: string
+                      headerAuthScheme:
+                        description: HeaderAuthScheme defines the scheme when using
+                          Authorization as header name.
+                        type: string
+                      query:
+                        description: Query defines the query parameter name containing
+                          the secret sent by the client.
+                        type: string
+                    type: object
+                  secretNonBase64Encoded:
+                    description: SecretNonBase64Encoded defines whether the secret
+                      sent by the client is base64 encoded.
+                    type: boolean
+                  secretValues:
+                    description: |-
+                      SecretValues contains the hashed API keys.
+                      Supported hashing algorithms are Bcrypt, SHA1 and MD5.
+                      The hash should be generated using htpasswd.
+                    items:
+                      type: string
+                    type: array
+                type: object
               basicAuth:
                 description: |-
                   BasicAuth holds the basic auth middleware configuration.
@@ -1556,6 +1595,12 @@ spec:
                     description: FrameDeny defines whether to add the X-Frame-Options
                       header with the DENY value.
                     type: boolean
+                  headersTemplateDelim:
+                    description: 'HeadersTemplateDelim defines the template delim
+                      character(s), default: [ "{{", "}}" ]'
+                    items:
+                      type: string
+                    type: array
                   hostsProxyHeaders:
                     description: HostsProxyHeaders defines the header keys that may
                       hold a proxied hostname value for the request.

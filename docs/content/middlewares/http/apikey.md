@@ -1,7 +1,12 @@
 ---
 title: "Traefik APIKey Documentation"
-description: "The APIKey middleware in Traefik Proxy secures HTTP routes by requiring a valid API key."
+description: "The APIKey middleware in Traefik Proxy secures HTTP routes by requiring a valid API key. Read the technical documentation."
 ---
+
+# APIKey
+
+Adding API Key Authentication
+{: .subtitle }
 
 The APIKey middleware grants access to services only when a valid API key is provided.
 Keys can be sent via a header, a query parameter, or a cookie.
@@ -12,49 +17,12 @@ Keys can be sent via a header, a query parameter, or a cookie.
 
     When using Docker labels, `$` must be escaped as `$$`.
 
-```yaml tab="Structured (YAML)"
-http:
-  middlewares:
-    test-apikey:
-      apiKey:
-        keySource:
-          headerAuthScheme: Bearer
-          header: Authorization
-        secretNonBase64Encoded: true
-        secretValues:
-          - "$2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW"
-          - "$2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"
-          - "file:///run/secrets/traefik-apikey"
-```
-
-```toml tab="Structured (TOML)"
-[http.middlewares]
-  [http.middlewares.test-apikey.apiKey]
-    secretNonBase64Encoded = true
-    secretValues = ["$2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW", "$2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"]
-    [http.middlewares.test-apikey.apiKey.keySource]
-      headerAuthScheme = "Bearer"
-      header = "Authorization"
-```
-
-```yaml tab="Labels"
+```yaml tab="Docker & Swarm"
 labels:
   - "traefik.http.middlewares.test-apikey.apikey.keysource.header=Authorization"
   - "traefik.http.middlewares.test-apikey.apikey.keysource.headerauthscheme=Bearer"
   - "traefik.http.middlewares.test-apikey.apikey.secretnonbase64encoded=true"
   - "traefik.http.middlewares.test-apikey.apikey.secretvalues=$$2y$$05$$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW,$$2y$$05$$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"
-  - "traefik.http.middlewares.test-apikey.apikey.secretvalues=file:///run/secrets/traefik-apikey"
-```
-
-```json tab="Tags"
-{
-  "Tags": [
-    "traefik.http.middlewares.test-apikey.apikey.keysource.header=Authorization",
-    "traefik.http.middlewares.test-apikey.apikey.keysource.headerauthscheme=Bearer",
-    "traefik.http.middlewares.test-apikey.apikey.secretnonbase64encoded=true",
-    "traefik.http.middlewares.test-apikey.apikey.secretvalues=$2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW,$2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"
-  ]
-}
 ```
 
 ```yaml tab="Kubernetes"
@@ -80,6 +48,38 @@ metadata:
 stringData:
   secret: $2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW
   othersecret: $2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK
+```
+
+```yaml tab="Consul Catalog"
+- "traefik.http.middlewares.test-apikey.apikey.keysource.header=Authorization"
+- "traefik.http.middlewares.test-apikey.apikey.keysource.headerauthscheme=Bearer"
+- "traefik.http.middlewares.test-apikey.apikey.secretnonbase64encoded=true"
+- "traefik.http.middlewares.test-apikey.apikey.secretvalues=$2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW,$2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"
+```
+
+```yaml tab="File (YAML)"
+http:
+  middlewares:
+    test-apikey:
+      apiKey:
+        keySource:
+          headerAuthScheme: Bearer
+          header: Authorization
+        secretNonBase64Encoded: true
+        secretValues:
+          - "$2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW"
+          - "$2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"
+          - "file:///run/secrets/traefik-apikey"
+```
+
+```toml tab="File (TOML)"
+[http.middlewares]
+  [http.middlewares.test-apikey.apiKey]
+    secretNonBase64Encoded = true
+    secretValues = ["$2y$05$D4SPFxzfWKcx1OXfVhRbvOTH/QB0Lm6AXTk8.NOmU4rPLX2t6UUuW", "$2y$05$HbLL.g5dUqJippH0RuAGL.RaM9wNS2cT7hp6.vbv5okdCmVBSDzzK"]
+    [http.middlewares.test-apikey.apiKey.keySource]
+      headerAuthScheme = "Bearer"
+      header = "Authorization"
 ```
 
 ## Configuration Options
