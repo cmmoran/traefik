@@ -22,3 +22,4 @@ integration/tailscale.secret
 integration/gateway-api-conformance-reports/**/experimental-dev-default-report.yaml
 STATE.md
 AGENTS.md
+.cache/

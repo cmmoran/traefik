@@ -1,16 +1,67 @@
 ---
-title: 'OpenID Connect Authentication'
-description: 'Traefik Hub API Gateway - The OIDC Authentication middleware secures your applications by delegating the authentication to an external provider.'
+title: 'Traefik OIDC Documentation'
+description: 'The OIDC middleware secures HTTP routes by delegating authentication to an OpenID Connect provider.'
 ---
 
-!!! info "Traefik Hub Feature"
-    This middleware is available exclusively in [Traefik Hub](https://traefik.io/traefik-hub/). Learn more about [Traefik Hub's advanced features](https://doc.traefik.io/traefik-hub/api-gateway/intro).
+The OIDC middleware secures your applications by delegating authentication to an OpenID Connect provider.
+Sessions are stored in signed and encrypted cookies. Redis session store configuration is accepted but not yet used.
 
-The OIDC Authentication middleware secures your applications by delegating the authentication to an external provider
+## Configuration Examples
 
----
+!!! note ""
 
-## Configuration Example
+    When using Docker labels, `$` must be escaped as `$$`.
+
+```yaml tab="Structured (YAML)"
+http:
+  middlewares:
+    test-oidc:
+      oidc:
+        issuer: "https://tenant.auth0.com/realms/myrealm"
+        redirectUrl: "/callback"
+        clientID: "my-oidc-client-name"
+        clientSecret: "mysecret"
+        scopes:
+          - openid
+          - profile
+        session:
+          expiry: 3600
+```
+
+```toml tab="Structured (TOML)"
+[http.middlewares]
+  [http.middlewares.test-oidc.oidc]
+    issuer = "https://tenant.auth0.com/realms/myrealm"
+    redirectUrl = "/callback"
+    clientID = "my-oidc-client-name"
+    clientSecret = "mysecret"
+    scopes = ["openid", "profile"]
+    [http.middlewares.test-oidc.oidc.session]
+      expiry = 3600
+```
+
+```yaml tab="Labels"
+labels:
+  - "traefik.http.middlewares.test-oidc.oidc.issuer=https://tenant.auth0.com/realms/myrealm"
+  - "traefik.http.middlewares.test-oidc.oidc.redirecturl=/callback"
+  - "traefik.http.middlewares.test-oidc.oidc.clientid=my-oidc-client-name"
+  - "traefik.http.middlewares.test-oidc.oidc.clientsecret=mysecret"
+  - "traefik.http.middlewares.test-oidc.oidc.scopes=openid,profile"
+  - "traefik.http.middlewares.test-oidc.oidc.session.expiry=3600"
+```
+
+```json tab="Tags"
+{
+  "Tags": [
+    "traefik.http.middlewares.test-oidc.oidc.issuer=https://tenant.auth0.com/realms/myrealm",
+    "traefik.http.middlewares.test-oidc.oidc.redirecturl=/callback",
+    "traefik.http.middlewares.test-oidc.oidc.clientid=my-oidc-client-name",
+    "traefik.http.middlewares.test-oidc.oidc.clientsecret=mysecret",
+    "traefik.http.middlewares.test-oidc.oidc.scopes=openid,profile",
+    "traefik.http.middlewares.test-oidc.oidc.session.expiry=3600"
+  ]
+}
+```
 
 ```yaml tab="Middleware OIDC"
 apiVersion: traefik.io/v1alpha1
@@ -19,31 +70,30 @@ metadata:
   name: test-oidc
   namespace: whoami
 spec:
-  plugin:
-    oidc:
-      issuer: "https://tenant.auth0.com/realms/myrealm"
-      redirectUrl: "/callback"
-      clientID: "urn:k8s:secret:my-secret:clientId"
-      clientSecret: "urn:k8s:secret:my-secret:clientSecret"
-      session:
-        name: customsessioncookiename
-        sliding: false
-        refresh: false
-        expiry: 10
-        sameSite: none
-        httpOnly: false
-        secure: true
-      stateCookie:
-        name: customstatecookiename
-        maxAge: 10
-        sameSite: none
-        httpOnly: true
-        secure: true
-      forwardHeaders:
-        Group: grp
-        Expires-At: exp
-      claims: Equals(`grp`, `admin`)
-      csrf: {}
+  oidc:
+    issuer: "https://tenant.auth0.com/realms/myrealm"
+    redirectUrl: "/callback"
+    clientID: "urn:k8s:secret:my-secret:clientId"
+    clientSecret: "urn:k8s:secret:my-secret:clientSecret"
+    session:
+      name: customsessioncookiename
+      sliding: false
+      refresh: false
+      expiry: 10
+      sameSite: none
+      httpOnly: false
+      secure: true
+    stateCookie:
+      name: customstatecookiename
+      maxAge: 10
+      sameSite: none
+      httpOnly: true
+      secure: true
+    forwardHeaders:
+      Group: grp
+      Expires-At: exp
+    claims: Equals(`grp`, `admin`)
+    csrf: {}
 ```
 
 ```yaml tab="Kubernetes Secret"
@@ -84,6 +134,10 @@ stringData:
 | <a id="opt-postLogoutRedirectUrl" href="#opt-postLogoutRedirectUrl" title="#opt-postLogoutRedirectUrl">`postLogoutRedirectUrl`</a> | If set and used in conjunction with `logoutUrl`, the middleware will redirect to this URL after logout. <br /> It can be a path (`/after/logout` for example), a host and a path (`example.com/after/logout`) or a complete URL (`https://example.com/after/logout`). <br /> Only `http` and `https` schemes are supported. | "" | No |
 | <a id="opt-backchannelLogoutUrl" href="#opt-backchannelLogoutUrl" title="#opt-backchannelLogoutUrl">`backchannelLogoutUrl`</a> | Defines the URL called by the OIDC provider when a user logs out (see https://openid.net/specs/openid-connect-rpinitiated-1_0.html#OpenID.BackChannel). <br /> It can be a path (`/backchannel-logout` for example), a host and a path (`example.com/backchannel-logout`) or a complete URL (`https://example.com/backchannel-logout`). <br /> Only `http` and `https` schemes are supported. <br /> This feature is currently in an experimental state and has been tested exclusively with the Keycloak OIDC provider. | "" | No |
 | <a id="opt-backchannelLogoutSessionsRequired" href="#opt-backchannelLogoutSessionsRequired" title="#opt-backchannelLogoutSessionsRequired">`backchannelLogoutSessionsRequired`</a> | This specifies whether the OIDC provider includes the sid (session ID) Claim in the Logout Token to identify the user session (see https://openid.net/specs/openid-connect-backchannel-1_0.html#BCRegistration). <br/> If omitted, the default value is false. <br /> This feature is currently in an experimental state and has been tested exclusively with the Keycloak OIDC provider. | false | No |
+
+!!! note ""
+
+    Backchannel logout requests are acknowledged but do not invalidate cookie sessions yet.
 | <a id="opt-stateCookie-name" href="#opt-stateCookie-name" title="#opt-stateCookie-name">`stateCookie.name`</a> | Defines the name of the state cookie. |"`MIDDLEWARE_NAME`-state" | No |
 | <a id="opt-stateCookie-path" href="#opt-stateCookie-path" title="#opt-stateCookie-path">`stateCookie.path`</a> | Defines the URL path that must exist in the requested URL in order to send the Cookie header. <br /> The `%x2F` ('/') character is considered a directory separator, and subdirectories will match as well. <br /> For example, if `stateCookie.path` is set to `/docs`, these paths will match: `/docs`,`/docs/web/`,`/docs/web/http`.| "/" | No |
 | <a id="opt-stateCookie-domain" href="#opt-stateCookie-domain" title="#opt-stateCookie-domain">`stateCookie.domain`</a> | Defines the hosts that are allowed to receive the cookie. <br />If specified, then subdomains are always included. <br /> For example, if it is set to `example.com`, then cookies are included on subdomains like `api.example.com`. | "" | No |
@@ -101,9 +155,9 @@ stringData:
 | <a id="opt-session-httpOnly" href="#opt-session-httpOnly" title="#opt-session-httpOnly">`session.httpOnly`</a> | Forbids JavaScript from accessing the cookie. <br /> For example, through the `Document.cookie` property, the `XMLHttpRequest` API, or the `Request` API. <br /> This mitigates attacks against cross-site scripting ([XSS](https://developer.mozilla.org/en-US/docs/Glossary/XSS)). | true | No |
 | <a id="opt-session-secure" href="#opt-session-secure" title="#opt-session-secure">`session.secure`</a> | Defines whether the session cookie is only sent to the server when a request is made with the `https` scheme. | false | No |
 | <a id="opt-session-store-redis-endpoints" href="#opt-session-store-redis-endpoints" title="#opt-session-store-redis-endpoints">`session.store.redis.endpoints`</a> | Endpoints of the Redis instances to connect to (example: `redis.traefik-hub.svc.cluster.local:6379`) | "" | Yes      |
-| <a id="opt-session-store-redis-username" href="#opt-session-store-redis-username" title="#opt-session-store-redis-username">`session.store.redis.username`</a> | The username Traefik Hub will use to connect to Redis                                                | "" | No       |
-| <a id="opt-session-store-redis-password" href="#opt-session-store-redis-password" title="#opt-session-store-redis-password">`session.store.redis.password`</a> | The password Traefik Hub will use to connect to Redis                                                | "" | No       |
-| <a id="opt-session-store-redis-database" href="#opt-session-store-redis-database" title="#opt-session-store-redis-database">`session.store.redis.database`</a> | The database Traefik Hub will use to sore information (default: `0`)                                 | "" | No       |
+| <a id="opt-session-store-redis-username" href="#opt-session-store-redis-username" title="#opt-session-store-redis-username">`session.store.redis.username`</a> | The username Traefik will use to connect to Redis                                                    | "" | No       |
+| <a id="opt-session-store-redis-password" href="#opt-session-store-redis-password" title="#opt-session-store-redis-password">`session.store.redis.password`</a> | The password Traefik will use to connect to Redis                                                    | "" | No       |
+| <a id="opt-session-store-redis-database" href="#opt-session-store-redis-database" title="#opt-session-store-redis-database">`session.store.redis.database`</a> | The database Traefik will use to store information (default: `0`)                                    | "" | No       |
 | <a id="opt-session-store-redis-cluster" href="#opt-session-store-redis-cluster" title="#opt-session-store-redis-cluster">`session.store.redis.cluster`</a> | Enable Redis Cluster                                                                                 | "" | No       |
 | <a id="opt-session-store-redis-tls-caBundle" href="#opt-session-store-redis-tls-caBundle" title="#opt-session-store-redis-tls-caBundle">`session.store.redis.tls.caBundle`</a> | Custom CA bundle                                                                                     | "" | No       |
 | <a id="opt-session-store-redis-tls-cert" href="#opt-session-store-redis-tls-cert" title="#opt-session-store-redis-tls-cert">`session.store.redis.tls.cert`</a> | TLS certificate                                                                                      | "" | No       |
@@ -178,12 +232,11 @@ kind: Middleware
 metadata:
   name: test-oidc
 spec:
-  plugin:
-    oidc:
-      issuer: "https://tenant.auth0.com/realms/myrealm"
-      redirectUrl: "/callback"
-      clientID: my-oidc-client-name
-      clientSecret: mysecret
+  oidc:
+    issuer: "https://tenant.auth0.com/realms/myrealm"
+    redirectUrl: "/callback"
+    clientID: my-oidc-client-name
+    clientSecret: mysecret
 ```
 
 ### clientID, clientSecret
@@ -196,6 +249,11 @@ The reference to a Kubernetes secret takes the form of a URN:
 ```text
 urn:k8s:secret:[name]:[valueKey]
 ```
+
+#### Reading the client secret from a file
+
+The `clientSecret` value may reference a file path (for example: `/run/secrets/oidc-client-secret`)
+or use the `file://` prefix to read the client secret from a mounted file.
 
 ### claims
 
@@ -289,14 +347,12 @@ Defines the configuration used to connect the API Gateway to a Third Party Softw
 
 #### `clientConfig.tls`
 
-##### Storing secret values in Kubernetes secrets
+##### Storing TLS material in Kubernetes secrets
 
-When configuring the `tls.ca`, `tls.cert`, `tls.key`, it is possible to reference Kubernetes secrets defined in the same namespace as the Middleware.  
-The reference to a Kubernetes secret takes the form of a URN:
-
-```text
-urn:k8s:secret:[name]:[valueKey]
-```
+When configuring the TLS options in Kubernetes, use `clientConfig.tls.caSecret` and
+`clientConfig.tls.certSecret` to reference Secrets in the same namespace.
+The CA certificate is read from `ca.crt` or `tls.ca`, and the client certificate/key
+are read from `tls.crt` and `tls.key`.
 
 ```yaml tab="Middleware JWT"
 apiVersion: traefik.io/v1alpha1
@@ -304,14 +360,12 @@ kind: Middleware
 metadata:
   name: test-oidc
 spec:
-  plugin:
-    oidc:
-      clientConfig:
-        tls:
-          ca: "urn:k8s:secret:tls:ca"
-          cert: "urn:k8s:secret:tls:cert"
-          key: "urn:k8s:secret:tls:key"
-          insecureSkipVerify: true
+  oidc:
+    clientConfig:
+      tls:
+        caSecret: tls
+        certSecret: tls
+        insecureSkipVerify: true
 ```
 
 ```yaml tab="Kubernetes TLS Secret"
@@ -369,6 +423,10 @@ An OpenID Connect Authentication middleware can use a persistent KV storage to s
 instead of keeping all the state in cookies.
 It avoids cookies growing inconveniently large, which can lead to latency issues.
 
+!!! note ""
+
+    Redis session store configuration is accepted but currently ignored; sessions remain cookie-based.
+
 Refer to the [redis options](#configuration-options) to configure the Redis connection.
 
 Connection parameters to your [Redis](https://redis.io/ "Link to website of Redis") server are attached to your Middleware deployment.
@@ -394,18 +452,17 @@ kind: Middleware
 metadata:
   name: test-oidc
 spec:
-  plugin:
-    oidc:
-      issuer: "https://tenant.auth0.com/realms/myrealm"
-      redirectUrl: "/callback"
-      clientID: my-oidc-client-name
-      clientSecret: mysecret
-      session:
-        store:
-          redis:
-            endpoints:
-              - redis-master.traefik-hub.svc.cluster.local:6379
-            password: "urn:k8s:secret:oidc:redisPass"
+  oidc:
+    issuer: "https://tenant.auth0.com/realms/myrealm"
+    redirectUrl: "/callback"
+    clientID: my-oidc-client-name
+    clientSecret: mysecret
+    session:
+      store:
+        redis:
+          endpoints:
+            - redis-master.traefik-hub.svc.cluster.local:6379
+          password: "urn:k8s:secret:oidc:redisPass"
 ```
 
 ```yaml tab="Creating the Kubernetes secret"

@@ -22,6 +22,7 @@ Middlewares that use the same protocol can be combined into chains to fit every 
 |-------------------------------------------|---------------------------------------------------|-----------------------------|
 | <a id="opt-AddPrefix" href="#opt-AddPrefix" title="#opt-AddPrefix">[AddPrefix](addprefix.md)</a> | Adds a Path Prefix                                | Path Modifier               |
 | <a id="opt-APIKey" href="#opt-APIKey" title="#opt-APIKey">[APIKey](apikey.md)</a> | Adds API Key Authentication                       | Security, Authentication    |
+| <a id="opt-OIDC" href="#opt-OIDC" title="#opt-OIDC">[OIDC](oidc.md)</a> | Adds OpenID Connect Authentication                | Security, Authentication    |
 | <a id="opt-BasicAuth" href="#opt-BasicAuth" title="#opt-BasicAuth">[BasicAuth](basicauth.md)</a> | Adds Basic Authentication                         | Security, Authentication    |
 | <a id="opt-Buffering" href="#opt-Buffering" title="#opt-Buffering">[Buffering](buffering.md)</a> | Buffers the request/response                      | Request Lifecycle           |
 | <a id="opt-Chain" href="#opt-Chain" title="#opt-Chain">[Chain](chain.md)</a> | Combines multiple pieces of middleware            | Misc                        |

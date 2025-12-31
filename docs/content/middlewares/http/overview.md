@@ -102,6 +102,7 @@ http:
 |-------------------------------------------|---------------------------------------------------|-----------------------------|
 | [AddPrefix](addprefix.md)                 | Adds a Path Prefix                                | Path Modifier               |
 | [APIKey](apikey.md)                       | Adds API Key Authentication                       | Security, Authentication    |
+| [OIDC](oidc.md)                           | Adds OpenID Connect Authentication                | Security, Authentication    |
 | [BasicAuth](basicauth.md)                 | Adds Basic Authentication                         | Security, Authentication    |
 | [Buffering](buffering.md)                 | Buffers the request/response                      | Request Lifecycle           |
 | [Chain](chain.md)                         | Combines multiple pieces of middleware            | Misc                        |

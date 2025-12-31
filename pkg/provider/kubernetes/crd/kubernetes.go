@@ -248,6 +248,12 @@ func (p *Provider) loadConfigurationFromCRD(ctx context.Context, client Client) 
 			continue
 		}
 
+		oidc, err := createOIDCMiddleware(client, middleware.Namespace, middleware.Spec.OIDC)
+		if err != nil {
+			logger.Error().Err(err).Msg("Error while reading oidc middleware")
+			continue
+		}
+
 		forwardAuth, err := createForwardAuthMiddleware(client, middleware.Namespace, middleware.Spec.ForwardAuth)
 		if err != nil {
 			logger.Error().Err(err).Msg("Error while reading forward auth middleware")
@@ -306,6 +312,7 @@ func (p *Provider) loadConfigurationFromCRD(ctx context.Context, client Client) 
 			RedirectScheme:    middleware.Spec.RedirectScheme,
 			BasicAuth:         basicAuth,
 			APIKey:            apiKey,
+			OIDC:              oidc,
 			DigestAuth:        digestAuth,
 			ForwardAuth:       forwardAuth,
 			InFlightReq:       middleware.Spec.InFlightReq,
@@ -1187,6 +1194,174 @@ func createAPIKeyMiddleware(client Client, namespace string, apiKey *traefikv1al
 		KeySource:              keySource,
 		SecretNonBase64Encoded: apiKey.SecretNonBase64Encoded,
 		SecretValues:           secretValues,
+	}, nil
+}
+
+func createOIDCMiddleware(client Client, namespace string, oidcConfig *traefikv1alpha1.OIDC) (*dynamic.OIDC, error) {
+	if oidcConfig == nil {
+		return nil, nil
+	}
+
+	clientID := oidcConfig.ClientID
+	if strings.HasPrefix(clientID, "urn:k8s:secret:") {
+		resolved, err := getSecretValue(client, namespace, clientID)
+		if err != nil {
+			return nil, err
+		}
+		clientID = resolved
+	}
+
+	clientSecret := oidcConfig.ClientSecret
+	if strings.HasPrefix(clientSecret, "urn:k8s:secret:") {
+		resolved, err := getSecretValue(client, namespace, clientSecret)
+		if err != nil {
+			return nil, err
+		}
+		clientSecret = resolved
+	}
+
+	var clientConfig *dynamic.OIDCClientConfig
+	if oidcConfig.ClientConfig != nil {
+		clientConfig = &dynamic.OIDCClientConfig{
+			TimeoutSeconds: oidcConfig.ClientConfig.TimeoutSeconds,
+			MaxRetries:     oidcConfig.ClientConfig.MaxRetries,
+		}
+		if oidcConfig.ClientConfig.TLS != nil {
+			clientTLS := &types.ClientTLS{
+				InsecureSkipVerify: oidcConfig.ClientConfig.TLS.InsecureSkipVerify,
+			}
+			if len(oidcConfig.ClientConfig.TLS.CASecret) > 0 {
+				caSecret, err := loadCASecret(namespace, oidcConfig.ClientConfig.TLS.CASecret, client)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load oidc tls ca secret: %w", err)
+				}
+				clientTLS.CA = caSecret
+			}
+			if len(oidcConfig.ClientConfig.TLS.CertSecret) > 0 {
+				cert, key, err := loadAuthTLSSecret(namespace, oidcConfig.ClientConfig.TLS.CertSecret, client)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load oidc tls cert secret: %w", err)
+				}
+				clientTLS.Cert = cert
+				clientTLS.Key = key
+			}
+			clientConfig.TLS = clientTLS
+		}
+	}
+
+	var session *dynamic.OIDCSession
+	if oidcConfig.Session != nil {
+		session = &dynamic.OIDCSession{
+			Name:     oidcConfig.Session.Name,
+			Path:     oidcConfig.Session.Path,
+			Domain:   oidcConfig.Session.Domain,
+			Expiry:   oidcConfig.Session.Expiry,
+			Sliding:  oidcConfig.Session.Sliding,
+			Refresh:  oidcConfig.Session.Refresh,
+			SameSite: oidcConfig.Session.SameSite,
+			HTTPOnly: oidcConfig.Session.HTTPOnly,
+			Secure:   oidcConfig.Session.Secure,
+		}
+
+		if oidcConfig.Session.Store != nil && oidcConfig.Session.Store.Redis != nil {
+			redis := oidcConfig.Session.Store.Redis
+			dynRedis := &dynamic.OIDCRedis{
+				Endpoints: redis.Endpoints,
+				Username:  redis.Username,
+				Password:  redis.Password,
+				Database:  redis.Database,
+				Cluster:   redis.Cluster,
+			}
+			if strings.HasPrefix(dynRedis.Password, "urn:k8s:secret:") {
+				resolved, err := getSecretValue(client, namespace, dynRedis.Password)
+				if err != nil {
+					return nil, err
+				}
+				dynRedis.Password = resolved
+			}
+			if redis.TLS != nil {
+				redisTLS := &types.ClientTLS{
+					InsecureSkipVerify: redis.TLS.InsecureSkipVerify,
+				}
+				if len(redis.TLS.CASecret) > 0 {
+					caSecret, err := loadCASecret(namespace, redis.TLS.CASecret, client)
+					if err != nil {
+						return nil, fmt.Errorf("failed to load oidc redis tls ca secret: %w", err)
+					}
+					redisTLS.CA = caSecret
+				}
+				if len(redis.TLS.CertSecret) > 0 {
+					cert, key, err := loadAuthTLSSecret(namespace, redis.TLS.CertSecret, client)
+					if err != nil {
+						return nil, fmt.Errorf("failed to load oidc redis tls cert secret: %w", err)
+					}
+					redisTLS.Cert = cert
+					redisTLS.Key = key
+				}
+				dynRedis.TLS = redisTLS
+			}
+			if redis.Sentinel != nil {
+				dynRedis.Sentinel = &dynamic.OIDCRedisSentinel{
+					MasterSet: redis.Sentinel.MasterSet,
+					Username:  redis.Sentinel.Username,
+					Password:  redis.Sentinel.Password,
+				}
+				if strings.HasPrefix(dynRedis.Sentinel.Password, "urn:k8s:secret:") {
+					resolved, err := getSecretValue(client, namespace, dynRedis.Sentinel.Password)
+					if err != nil {
+						return nil, err
+					}
+					dynRedis.Sentinel.Password = resolved
+				}
+			}
+			session.Store = &dynamic.OIDCSessionStore{Redis: dynRedis}
+		}
+	}
+
+	var stateCookie *dynamic.OIDCStateCookie
+	if oidcConfig.StateCookie != nil {
+		stateCookie = &dynamic.OIDCStateCookie{
+			Name:     oidcConfig.StateCookie.Name,
+			Path:     oidcConfig.StateCookie.Path,
+			Domain:   oidcConfig.StateCookie.Domain,
+			MaxAge:   oidcConfig.StateCookie.MaxAge,
+			SameSite: oidcConfig.StateCookie.SameSite,
+			HTTPOnly: oidcConfig.StateCookie.HTTPOnly,
+			Secure:   oidcConfig.StateCookie.Secure,
+		}
+	}
+
+	var csrf *dynamic.OIDCCSRF
+	if oidcConfig.CSRF != nil {
+		csrf = &dynamic.OIDCCSRF{
+			Secure:     oidcConfig.CSRF.Secure,
+			HeaderName: oidcConfig.CSRF.HeaderName,
+		}
+	}
+
+	return &dynamic.OIDC{
+		Issuer:                            oidcConfig.Issuer,
+		RedirectURL:                       oidcConfig.RedirectURL,
+		ClientID:                          clientID,
+		ClientSecret:                      clientSecret,
+		Claims:                            oidcConfig.Claims,
+		UsernameClaim:                     oidcConfig.UsernameClaim,
+		ForwardHeaders:                    oidcConfig.ForwardHeaders,
+		ClientConfig:                      clientConfig,
+		PKCE:                              oidcConfig.PKCE,
+		DiscoveryParams:                   oidcConfig.DiscoveryParams,
+		Scopes:                            oidcConfig.Scopes,
+		AuthParams:                        oidcConfig.AuthParams,
+		DisableLogin:                      oidcConfig.DisableLogin,
+		LoginURL:                          oidcConfig.LoginURL,
+		LogoutURL:                         oidcConfig.LogoutURL,
+		PostLoginRedirectURL:              oidcConfig.PostLoginRedirectURL,
+		PostLogoutRedirectURL:             oidcConfig.PostLogoutRedirectURL,
+		BackchannelLogoutURL:              oidcConfig.BackchannelLogoutURL,
+		BackchannelLogoutSessionsRequired: oidcConfig.BackchannelLogoutSessionsRequired,
+		StateCookie:                       stateCookie,
+		Session:                           session,
+		CSRF:                              csrf,
 	}, nil
 }
 
