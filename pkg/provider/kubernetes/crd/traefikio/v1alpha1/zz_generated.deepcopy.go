@@ -1581,8 +1581,7 @@ func (in *Route) DeepCopyInto(out *Route) {
 	}
 	if in.Observability != nil {
 		in, out := &in.Observability, &out.Observability
-		*out = new(dynamic.RouterObservabilityConfig)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	return
 }
@@ -1783,8 +1782,7 @@ func (in *ServersTransportSpec) DeepCopyInto(out *ServersTransportSpec) {
 	}
 	if in.Spiffe != nil {
 		in, out := &in.Spiffe, &out.Spiffe
-		*out = new(dynamic.Spiffe)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	return
 }
@@ -2036,8 +2034,7 @@ func (in *TLSClientConfig) DeepCopyInto(out *TLSClientConfig) {
 	}
 	if in.Spiffe != nil {
 		in, out := &in.Spiffe, &out.Spiffe
-		*out = new(dynamic.Spiffe)
-		(*in).DeepCopyInto(*out)
+		*out = (*in).DeepCopy()
 	}
 	return
 }
