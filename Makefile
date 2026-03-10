@@ -18,6 +18,9 @@ GOGC ?=
 LINT_EXECUTABLES = misspell shellcheck
 
 DOCKER_BUILD_PLATFORMS ?= linux/amd64,linux/arm64
+FORK_DOCKER_REPO ?= chrismoran/infamousity
+FORK_NEXT_PATCH_TAG := $(shell git tag | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)[A-Za-z]*$$/\1/p' | sort -V | tail -n 1 | awk -F. 'NF==3 { printf "v%s.%s.%d\n", $$1, $$2, $$3 + 1 }')
+CURRENT_BRANCH := $(shell git branch --show-current)
 
 .PHONY: default
 #? default: Run `make generate` and `make binary`
@@ -172,6 +175,49 @@ custom-image-%: export DOCKER_BUILD_PLATFORMS := linux/$(GOARCH)
 #custom-image-%: binary-linux-amd64 binary-linux-arm64
 custom-image-%: binary-linux-amd64
 	docker buildx build $(DOCKER_BUILDX_ARGS) -t $(DOCKER_REPO):$* --platform=$(DOCKER_BUILD_PLATFORMS) --push -f Dockerfile .
+
+.PHONY: fork-next-patch-tag
+#? fork-next-patch-tag: Print the next numeric patch tag based on existing vX.Y.Z or vX.Y.Za tags
+fork-next-patch-tag:
+	@if [ -z "$(FORK_NEXT_PATCH_TAG)" ]; then \
+		echo "Unable to determine next patch tag from existing tags"; \
+		exit 1; \
+	fi
+	@echo $(FORK_NEXT_PATCH_TAG)
+
+.PHONY: fork-release-patch-dry-run
+#? fork-release-patch-dry-run: Show the next patch tag and image publish command without tagging or building
+fork-release-patch-dry-run:
+	@if [ -z "$(FORK_NEXT_PATCH_TAG)" ]; then \
+		echo "Unable to determine next patch tag from existing tags"; \
+		exit 1; \
+	fi
+	@echo "Next patch tag: $(FORK_NEXT_PATCH_TAG)"
+	@echo "Publish command: DOCKER_REPO=$(FORK_DOCKER_REPO) VERSION=$(FORK_NEXT_PATCH_TAG) make custom-image-traefik__$(FORK_NEXT_PATCH_TAG)"
+
+.PHONY: fork-release-patch
+#? fork-release-patch: Tag the next patch version and publish the fork image from a custom-* branch to $(FORK_DOCKER_REPO)
+fork-release-patch:
+	@if [ -z "$(FORK_NEXT_PATCH_TAG)" ]; then \
+		echo "Unable to determine next patch tag from existing tags"; \
+		exit 1; \
+	fi
+	@echo "Next patch tag: $(FORK_NEXT_PATCH_TAG)"
+	@echo "Publish command: DOCKER_REPO=$(FORK_DOCKER_REPO) VERSION=$(FORK_NEXT_PATCH_TAG) make custom-image-traefik__$(FORK_NEXT_PATCH_TAG)"
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Working tree must be clean before fork-release-patch"; \
+		exit 1; \
+	fi
+	@if ! printf '%s\n' "$(CURRENT_BRANCH)" | grep -Eq '^custom-'; then \
+		echo "Current branch must start with custom- (got $(CURRENT_BRANCH))"; \
+		exit 1; \
+	fi
+	@if git rev-parse -q --verify "refs/tags/$(FORK_NEXT_PATCH_TAG)" >/dev/null; then \
+		echo "Tag $(FORK_NEXT_PATCH_TAG) already exists"; \
+		exit 1; \
+	fi
+	git tag $(FORK_NEXT_PATCH_TAG)
+	$(MAKE) DOCKER_REPO=$(FORK_DOCKER_REPO) VERSION=$(FORK_NEXT_PATCH_TAG) custom-image-traefik__$(FORK_NEXT_PATCH_TAG)
 
 .PHONY: docs
 #? docs: Build documentation site
