@@ -207,6 +207,57 @@ Activate TLS-ALPN-01 Challenge. (Default: ```false```)
 `--certificatesresolvers.<name>.acme.tlschallenge.delay`:  
 Delay between the creation of the challenge and the validation. (Default: ```0```)
 
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.enginepath`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.roleid`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.approle.secretid`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.certauth.enginepath`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.certauth.name`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.enginepath`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.kubernetes.role`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.auth.token`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.enginepath`:  
+Vault secrets engine path (Default: ```acme/traefik```)
+
+`--certificatesresolvers.<name>.acme.vaultstorage.lockownerid`:  
+When 'locking' using vault CAS lock, use this ownerId for this instance of traefik
+
+`--certificatesresolvers.<name>.acme.vaultstorage.namespace`:  
+Vault namespace
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.cabundle`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.cert`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.key`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.servername`:  
+
+
+`--certificatesresolvers.<name>.acme.vaultstorage.tls.skipverify`:  
+ (Default: ```false```)
+
+`--certificatesresolvers.<name>.acme.vaultstorage.url`:  
+Vault cluster url (Default: ```http://127.0.0.1:8200```)
+
 `--certificatesresolvers.<name>.tailscale`:  
 Enables Tailscale certificate resolution. (Default: ```true```)
 

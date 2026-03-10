@@ -56,6 +56,45 @@ spec:
                     - message: must start with a '/'
                       rule: self.startsWith('/')
                 type: object
+              apiKey:
+                description: |-
+                  APIKey holds the API key authentication middleware configuration.
+                  This middleware restricts access to your services to known API keys.
+                  More info: https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/apikey/
+                properties:
+                  keySource:
+                    description: KeySource defines where to read the API key from.
+                    properties:
+                      cookie:
+                        description: Cookie defines the cookie name containing the
+                          secret sent by the client.
+                        type: string
+                      header:
+                        description: Header defines the header name containing the
+                          secret sent by the client.
+                        type: string
+                      headerAuthScheme:
+                        description: HeaderAuthScheme defines the scheme when using
+                          Authorization as header name.
+                        type: string
+                      query:
+                        description: Query defines the query parameter name containing
+                          the secret sent by the client.
+                        type: string
+                    type: object
+                  secretNonBase64Encoded:
+                    description: SecretNonBase64Encoded defines whether the secret
+                      sent by the client is base64 encoded.
+                    type: boolean
+                  secretValues:
+                    description: |-
+                      SecretValues contains the hashed API keys.
+                      Supported hashing algorithms are Bcrypt, SHA1 and MD5.
+                      The hash should be generated using htpasswd.
+                    items:
+                      type: string
+                    type: array
+                type: object
               basicAuth:
                 description: |-
                   BasicAuth holds the basic auth middleware configuration.
@@ -788,6 +827,12 @@ spec:
                     description: FrameDeny defines whether to add the X-Frame-Options
                       header with the DENY value.
                     type: boolean
+                  headersTemplateDelim:
+                    description: 'HeadersTemplateDelim defines the template delim
+                      character(s), default: [ "{{", "}}" ]'
+                    items:
+                      type: string
+                    type: array
                   hostsProxyHeaders:
                     description: HostsProxyHeaders defines the header keys that may
                       hold a proxied hostname value for the request.
@@ -982,6 +1027,182 @@ spec:
                     items:
                       type: string
                     type: array
+                type: object
+              oidc:
+                description: |-
+                  OIDC holds the OpenID Connect authentication middleware configuration.
+                  This middleware restricts access to your services by delegating authentication to an OpenID Connect provider.
+                  More info: https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/oidc/
+                properties:
+                  authParams:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  backchannelLogoutSessionsRequired:
+                    type: boolean
+                  backchannelLogoutUrl:
+                    type: string
+                  claims:
+                    type: string
+                  clientConfig:
+                    description: OIDCClientConfig defines the configuration used to
+                      connect to the OpenID Connect provider.
+                    properties:
+                      maxRetries:
+                        type: integer
+                      timeoutSeconds:
+                        type: integer
+                      tls:
+                        description: ClientTLS holds the client TLS configuration.
+                        properties:
+                          caSecret:
+                            description: |-
+                              CASecret is the name of the referenced Kubernetes Secret containing the CA to validate the server certificate.
+                              The CA certificate is extracted from key `tls.ca` or `ca.crt`.
+                            type: string
+                          certSecret:
+                            description: |-
+                              CertSecret is the name of the referenced Kubernetes Secret containing the client certificate.
+                              The client certificate is extracted from the keys `tls.crt` and `tls.key`.
+                            type: string
+                          insecureSkipVerify:
+                            description: InsecureSkipVerify defines whether the server
+                              certificates should be validated.
+                            type: boolean
+                        type: object
+                    type: object
+                  clientID:
+                    type: string
+                  clientSecret:
+                    type: string
+                  csrf:
+                    description: OIDCCSRF holds the CSRF protection configuration.
+                    properties:
+                      headerName:
+                        type: string
+                      secure:
+                        type: boolean
+                    type: object
+                  disableLogin:
+                    type: boolean
+                  discoveryParams:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  forwardHeaders:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  issuer:
+                    type: string
+                  loginUrl:
+                    type: string
+                  logoutUrl:
+                    type: string
+                  pkce:
+                    type: boolean
+                  postLoginRedirectUrl:
+                    type: string
+                  postLogoutRedirectUrl:
+                    type: string
+                  redirectUrl:
+                    type: string
+                  scopes:
+                    items:
+                      type: string
+                    type: array
+                  session:
+                    description: OIDCSession defines the session configuration.
+                    properties:
+                      domain:
+                        type: string
+                      expiry:
+                        type: integer
+                      httpOnly:
+                        type: boolean
+                      name:
+                        type: string
+                      path:
+                        type: string
+                      refresh:
+                        type: boolean
+                      sameSite:
+                        type: string
+                      secure:
+                        type: boolean
+                      sliding:
+                        type: boolean
+                      store:
+                        description: OIDCSessionStore defines the session store configuration.
+                        properties:
+                          redis:
+                            description: OIDCRedis holds the Redis configuration for
+                              OIDC session storage.
+                            properties:
+                              cluster:
+                                type: boolean
+                              database:
+                                type: integer
+                              endpoints:
+                                items:
+                                  type: string
+                                type: array
+                              password:
+                                type: string
+                              sentinel:
+                                description: OIDCRedisSentinel holds the Redis Sentinel
+                                  configuration for OIDC session storage.
+                                properties:
+                                  masterSet:
+                                    type: string
+                                  password:
+                                    type: string
+                                  username:
+                                    type: string
+                                type: object
+                              tls:
+                                description: ClientTLS holds the client TLS configuration.
+                                properties:
+                                  caSecret:
+                                    description: |-
+                                      CASecret is the name of the referenced Kubernetes Secret containing the CA to validate the server certificate.
+                                      The CA certificate is extracted from key `tls.ca` or `ca.crt`.
+                                    type: string
+                                  certSecret:
+                                    description: |-
+                                      CertSecret is the name of the referenced Kubernetes Secret containing the client certificate.
+                                      The client certificate is extracted from the keys `tls.crt` and `tls.key`.
+                                    type: string
+                                  insecureSkipVerify:
+                                    description: InsecureSkipVerify defines whether
+                                      the server certificates should be validated.
+                                    type: boolean
+                                type: object
+                              username:
+                                type: string
+                            type: object
+                        type: object
+                    type: object
+                  stateCookie:
+                    description: OIDCStateCookie defines the state cookie configuration.
+                    properties:
+                      domain:
+                        type: string
+                      httpOnly:
+                        type: boolean
+                      maxAge:
+                        type: integer
+                      name:
+                        type: string
+                      path:
+                        type: string
+                      sameSite:
+                        type: string
+                      secure:
+                        type: boolean
+                    type: object
+                  usernameClaim:
+                    type: string
                 type: object
               passTLSClientCert:
                 description: |-
