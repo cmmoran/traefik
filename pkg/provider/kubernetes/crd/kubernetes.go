@@ -260,6 +260,18 @@ func (p *Provider) loadConfigurationFromCRD(ctx context.Context, client Client) 
 			continue
 		}
 
+		apiKey, err := createAPIKeyMiddleware(client, middleware.Namespace, middleware.Spec.APIKey)
+		if err != nil {
+			logger.Error().Err(err).Msg("Error while reading api key middleware")
+			continue
+		}
+
+		oidc, err := createOIDCMiddleware(client, middleware.Namespace, middleware.Spec.OIDC)
+		if err != nil {
+			logger.Error().Err(err).Msg("Error while reading oidc middleware")
+			continue
+		}
+
 		forwardAuth, err := createForwardAuthMiddleware(client, middleware.Namespace, middleware.Spec.ForwardAuth)
 		if err != nil {
 			logger.Error().Err(err).Msg("Error while reading forward auth middleware")
@@ -318,6 +330,8 @@ func (p *Provider) loadConfigurationFromCRD(ctx context.Context, client Client) 
 			RedirectRegex:     middleware.Spec.RedirectRegex,
 			RedirectScheme:    middleware.Spec.RedirectScheme,
 			BasicAuth:         basicAuth,
+			APIKey:            apiKey,
+			OIDC:              oidc,
 			DigestAuth:        digestAuth,
 			ForwardAuth:       forwardAuth,
 			InFlightReq:       middleware.Spec.InFlightReq,
@@ -982,26 +996,11 @@ func createRetryMiddleware(retry *traefikv1alpha1.Retry) (*dynamic.Retry, error)
 		return nil, nil
 	}
 
-	r := &dynamic.Retry{
-		Attempts:                   retry.Attempts,
-		Status:                     retry.Status,
-		DisableRetryOnNetworkError: retry.DisableRetryOnNetworkError,
-		RetryNonIdempotentMethod:   retry.RetryNonIdempotentMethod,
-	}
-	r.SetDefaults()
+	r := &dynamic.Retry{Attempts: retry.Attempts}
 
 	err := r.InitialInterval.Set(retry.InitialInterval.String())
 	if err != nil {
 		return nil, err
-	}
-
-	err = r.Timeout.Set(retry.Timeout.String())
-	if err != nil {
-		return nil, err
-	}
-
-	if retry.MaxRequestBodyBytes != nil {
-		r.MaxRequestBodyBytes = retry.MaxRequestBodyBytes
 	}
 
 	return r, nil
@@ -1029,10 +1028,6 @@ func createForwardAuthMiddleware(k8sClient Client, namespace string, auth *traef
 		AuthSigninURL:            auth.AuthSigninURL,
 	}
 	forwardAuth.SetDefaults()
-
-	if auth.MaxResponseBodySize != nil {
-		forwardAuth.MaxResponseBodySize = auth.MaxResponseBodySize
-	}
 
 	if auth.MaxBodySize != nil {
 		forwardAuth.MaxBodySize = auth.MaxBodySize
@@ -1227,6 +1222,209 @@ func createBufferingMiddleware(buffering *traefikv1alpha1.Buffering) *dynamic.Bu
 		MaxResponseBodyBytes: buffering.MaxResponseBodyBytes,
 		RetryExpression:      buffering.RetryExpression,
 	}
+}
+
+func createAPIKeyMiddleware(client Client, namespace string, apiKey *traefikv1alpha1.APIKey) (*dynamic.APIKey, error) {
+	if apiKey == nil {
+		return nil, nil
+	}
+
+	var keySource *dynamic.APIKeySource
+	if apiKey.KeySource != nil {
+		keySource = &dynamic.APIKeySource{
+			Header:           apiKey.KeySource.Header,
+			HeaderAuthScheme: apiKey.KeySource.HeaderAuthScheme,
+			Query:            apiKey.KeySource.Query,
+			Cookie:           apiKey.KeySource.Cookie,
+		}
+	}
+
+	secretValues := make([]string, 0, len(apiKey.SecretValues))
+	for _, secretValue := range apiKey.SecretValues {
+		if strings.HasPrefix(secretValue, "urn:k8s:secret:") {
+			resolved, err := getSecretValue(client, namespace, secretValue)
+			if err != nil {
+				return nil, err
+			}
+			secretValues = append(secretValues, resolved)
+			continue
+		}
+		secretValues = append(secretValues, secretValue)
+	}
+
+	return &dynamic.APIKey{
+		KeySource:              keySource,
+		SecretNonBase64Encoded: apiKey.SecretNonBase64Encoded,
+		SecretValues:           secretValues,
+	}, nil
+}
+
+func createOIDCMiddleware(client Client, namespace string, oidcConfig *traefikv1alpha1.OIDC) (*dynamic.OIDC, error) {
+	if oidcConfig == nil {
+		return nil, nil
+	}
+
+	clientID := oidcConfig.ClientID
+	if strings.HasPrefix(clientID, "urn:k8s:secret:") {
+		resolved, err := getSecretValue(client, namespace, clientID)
+		if err != nil {
+			return nil, err
+		}
+		clientID = resolved
+	}
+
+	clientSecret := oidcConfig.ClientSecret
+	if strings.HasPrefix(clientSecret, "urn:k8s:secret:") {
+		resolved, err := getSecretValue(client, namespace, clientSecret)
+		if err != nil {
+			return nil, err
+		}
+		clientSecret = resolved
+	}
+
+	var clientConfig *dynamic.OIDCClientConfig
+	if oidcConfig.ClientConfig != nil {
+		clientConfig = &dynamic.OIDCClientConfig{
+			TimeoutSeconds: oidcConfig.ClientConfig.TimeoutSeconds,
+			MaxRetries:     oidcConfig.ClientConfig.MaxRetries,
+		}
+		if oidcConfig.ClientConfig.TLS != nil {
+			clientTLS := &types.ClientTLS{
+				InsecureSkipVerify: oidcConfig.ClientConfig.TLS.InsecureSkipVerify,
+			}
+			if len(oidcConfig.ClientConfig.TLS.CASecret) > 0 {
+				caSecret, err := loadCASecret(namespace, oidcConfig.ClientConfig.TLS.CASecret, client)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load oidc tls ca secret: %w", err)
+				}
+				clientTLS.CA = caSecret
+			}
+			if len(oidcConfig.ClientConfig.TLS.CertSecret) > 0 {
+				cert, key, err := loadAuthTLSSecret(namespace, oidcConfig.ClientConfig.TLS.CertSecret, client)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load oidc tls cert secret: %w", err)
+				}
+				clientTLS.Cert = cert
+				clientTLS.Key = key
+			}
+			clientConfig.TLS = clientTLS
+		}
+	}
+
+	var session *dynamic.OIDCSession
+	if oidcConfig.Session != nil {
+		session = &dynamic.OIDCSession{
+			Name:     oidcConfig.Session.Name,
+			Path:     oidcConfig.Session.Path,
+			Domain:   oidcConfig.Session.Domain,
+			Expiry:   oidcConfig.Session.Expiry,
+			Sliding:  oidcConfig.Session.Sliding,
+			Refresh:  oidcConfig.Session.Refresh,
+			SameSite: oidcConfig.Session.SameSite,
+			HTTPOnly: oidcConfig.Session.HTTPOnly,
+			Secure:   oidcConfig.Session.Secure,
+		}
+
+		if oidcConfig.Session.Store != nil && oidcConfig.Session.Store.Redis != nil {
+			redis := oidcConfig.Session.Store.Redis
+			dynRedis := &dynamic.OIDCRedis{
+				Endpoints: redis.Endpoints,
+				Username:  redis.Username,
+				Password:  redis.Password,
+				Database:  redis.Database,
+				Cluster:   redis.Cluster,
+			}
+			if strings.HasPrefix(dynRedis.Password, "urn:k8s:secret:") {
+				resolved, err := getSecretValue(client, namespace, dynRedis.Password)
+				if err != nil {
+					return nil, err
+				}
+				dynRedis.Password = resolved
+			}
+			if redis.TLS != nil {
+				redisTLS := &types.ClientTLS{
+					InsecureSkipVerify: redis.TLS.InsecureSkipVerify,
+				}
+				if len(redis.TLS.CASecret) > 0 {
+					caSecret, err := loadCASecret(namespace, redis.TLS.CASecret, client)
+					if err != nil {
+						return nil, fmt.Errorf("failed to load oidc redis tls ca secret: %w", err)
+					}
+					redisTLS.CA = caSecret
+				}
+				if len(redis.TLS.CertSecret) > 0 {
+					cert, key, err := loadAuthTLSSecret(namespace, redis.TLS.CertSecret, client)
+					if err != nil {
+						return nil, fmt.Errorf("failed to load oidc redis tls cert secret: %w", err)
+					}
+					redisTLS.Cert = cert
+					redisTLS.Key = key
+				}
+				dynRedis.TLS = redisTLS
+			}
+			if redis.Sentinel != nil {
+				dynRedis.Sentinel = &dynamic.OIDCRedisSentinel{
+					MasterSet: redis.Sentinel.MasterSet,
+					Username:  redis.Sentinel.Username,
+					Password:  redis.Sentinel.Password,
+				}
+				if strings.HasPrefix(dynRedis.Sentinel.Password, "urn:k8s:secret:") {
+					resolved, err := getSecretValue(client, namespace, dynRedis.Sentinel.Password)
+					if err != nil {
+						return nil, err
+					}
+					dynRedis.Sentinel.Password = resolved
+				}
+			}
+			session.Store = &dynamic.OIDCSessionStore{Redis: dynRedis}
+		}
+	}
+
+	var stateCookie *dynamic.OIDCStateCookie
+	if oidcConfig.StateCookie != nil {
+		stateCookie = &dynamic.OIDCStateCookie{
+			Name:     oidcConfig.StateCookie.Name,
+			Path:     oidcConfig.StateCookie.Path,
+			Domain:   oidcConfig.StateCookie.Domain,
+			MaxAge:   oidcConfig.StateCookie.MaxAge,
+			SameSite: oidcConfig.StateCookie.SameSite,
+			HTTPOnly: oidcConfig.StateCookie.HTTPOnly,
+			Secure:   oidcConfig.StateCookie.Secure,
+		}
+	}
+
+	var csrf *dynamic.OIDCCSRF
+	if oidcConfig.CSRF != nil {
+		csrf = &dynamic.OIDCCSRF{
+			Secure:     oidcConfig.CSRF.Secure,
+			HeaderName: oidcConfig.CSRF.HeaderName,
+		}
+	}
+
+	return &dynamic.OIDC{
+		Issuer:                            oidcConfig.Issuer,
+		RedirectURL:                       oidcConfig.RedirectURL,
+		ClientID:                          clientID,
+		ClientSecret:                      clientSecret,
+		Claims:                            oidcConfig.Claims,
+		UsernameClaim:                     oidcConfig.UsernameClaim,
+		ForwardHeaders:                    oidcConfig.ForwardHeaders,
+		ClientConfig:                      clientConfig,
+		PKCE:                              oidcConfig.PKCE,
+		DiscoveryParams:                   oidcConfig.DiscoveryParams,
+		Scopes:                            oidcConfig.Scopes,
+		AuthParams:                        oidcConfig.AuthParams,
+		DisableLogin:                      oidcConfig.DisableLogin,
+		LoginURL:                          oidcConfig.LoginURL,
+		LogoutURL:                         oidcConfig.LogoutURL,
+		PostLoginRedirectURL:              oidcConfig.PostLoginRedirectURL,
+		PostLogoutRedirectURL:             oidcConfig.PostLogoutRedirectURL,
+		BackchannelLogoutURL:              oidcConfig.BackchannelLogoutURL,
+		BackchannelLogoutSessionsRequired: oidcConfig.BackchannelLogoutSessionsRequired,
+		StateCookie:                       stateCookie,
+		Session:                           session,
+		CSRF:                              csrf,
+	}, nil
 }
 
 func loadBasicAuthCredentials(secret *corev1.Secret) ([]string, error) {
@@ -1426,9 +1624,10 @@ func buildTLSStores(ctx context.Context, client Client) (map[string]tls.Store, m
 			}
 		}
 
-		// buildCertificates now handles missing secrets gracefully and continues processing
-		// other certificates, so we don't fail the entire TLS store if one certificate is missing
-		buildCertificates(ctx, client, id, t.Namespace, t.Spec.Certificates, tlsConfigs)
+		if err := buildCertificates(client, id, t.Namespace, t.Spec.Certificates, tlsConfigs); err != nil {
+			logger.Error().Err(err).Msg("Failed to load certificates")
+			continue
+		}
 
 		tlsStores[id] = tlsStore
 	}
@@ -1442,25 +1641,21 @@ func buildTLSStores(ctx context.Context, client Client) (map[string]tls.Store, m
 }
 
 // buildCertificates loads TLSStore certificates from secrets and sets them into tlsConfigs.
-// It continues processing other certificates even if one fails, making the TLS store resilient
-// to missing or invalid secrets. Missing secrets are logged as errors but don't prevent
-// the TLS store from being created with the certificates that are available.
-func buildCertificates(ctx context.Context, client Client, tlsStore, namespace string, certificates []traefikv1alpha1.Certificate, tlsConfigs map[string]*tls.CertAndStores) {
-	logger := log.Ctx(ctx).With().Str("TLSStore", tlsStore).Str("namespace", namespace).Logger()
-
+func buildCertificates(client Client, tlsStore, namespace string, certificates []traefikv1alpha1.Certificate, tlsConfigs map[string]*tls.CertAndStores) error {
 	for _, c := range certificates {
 		configKey := namespace + "/" + c.SecretName
 		if _, tlsExists := tlsConfigs[configKey]; !tlsExists {
 			certAndStores, err := getTLS(client, c.SecretName, namespace)
 			if err != nil {
-				logger.Error().Err(err).Msgf("Unable to read certificate secret %s/%s, skipping (will retry on next configuration refresh)", namespace, c.SecretName)
-				continue
+				return fmt.Errorf("unable to read secret %s: %w", configKey, err)
 			}
 
 			certAndStores.Stores = []string{tlsStore}
 			tlsConfigs[configKey] = certAndStores
 		}
 	}
+
+	return nil
 }
 
 func makeServiceKey(rule, ingressName string) string {

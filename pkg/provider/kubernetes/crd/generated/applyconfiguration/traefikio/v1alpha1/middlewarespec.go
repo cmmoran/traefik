@@ -49,6 +49,8 @@ type MiddlewareSpecApplyConfiguration struct {
 	RedirectRegex     *dynamic.RedirectRegex            `json:"redirectRegex,omitempty"`
 	RedirectScheme    *dynamic.RedirectScheme           `json:"redirectScheme,omitempty"`
 	BasicAuth         *BasicAuthApplyConfiguration      `json:"basicAuth,omitempty"`
+	APIKey            *APIKeyApplyConfiguration         `json:"apiKey,omitempty"`
+	OIDC              *OIDCApplyConfiguration           `json:"oidc,omitempty"`
 	DigestAuth        *DigestAuthApplyConfiguration     `json:"digestAuth,omitempty"`
 	ForwardAuth       *ForwardAuthApplyConfiguration    `json:"forwardAuth,omitempty"`
 	InFlightReq       *dynamic.InFlightReq              `json:"inFlightReq,omitempty"`
@@ -185,6 +187,22 @@ func (b *MiddlewareSpecApplyConfiguration) WithRedirectScheme(value dynamic.Redi
 // If called multiple times, the BasicAuth field is set to the value of the last call.
 func (b *MiddlewareSpecApplyConfiguration) WithBasicAuth(value *BasicAuthApplyConfiguration) *MiddlewareSpecApplyConfiguration {
 	b.BasicAuth = value
+	return b
+}
+
+// WithAPIKey sets the APIKey field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the APIKey field is set to the value of the last call.
+func (b *MiddlewareSpecApplyConfiguration) WithAPIKey(value *APIKeyApplyConfiguration) *MiddlewareSpecApplyConfiguration {
+	b.APIKey = value
+	return b
+}
+
+// WithOIDC sets the OIDC field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the OIDC field is set to the value of the last call.
+func (b *MiddlewareSpecApplyConfiguration) WithOIDC(value *OIDCApplyConfiguration) *MiddlewareSpecApplyConfiguration {
+	b.OIDC = value
 	return b
 }
 

@@ -40,6 +40,10 @@ import (
 func ForKind(kind schema.GroupVersionKind) interface{} {
 	switch kind {
 	// Group=traefik.io, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithKind("APIKey"):
+		return &traefikiov1alpha1.APIKeyApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("APIKeySource"):
+		return &traefikiov1alpha1.APIKeySourceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BasicAuth"):
 		return &traefikiov1alpha1.BasicAuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Buffering"):
@@ -104,6 +108,22 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &traefikiov1alpha1.MirrorServiceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &traefikiov1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDC"):
+		return &traefikiov1alpha1.OIDCApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCClientConfig"):
+		return &traefikiov1alpha1.OIDCClientConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCCSRF"):
+		return &traefikiov1alpha1.OIDCCSRFApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCRedis"):
+		return &traefikiov1alpha1.OIDCRedisApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCRedisSentinel"):
+		return &traefikiov1alpha1.OIDCRedisSentinelApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCSession"):
+		return &traefikiov1alpha1.OIDCSessionApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCSessionStore"):
+		return &traefikiov1alpha1.OIDCSessionStoreApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OIDCStateCookie"):
+		return &traefikiov1alpha1.OIDCStateCookieApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PassiveServerHealthCheck"):
 		return &traefikiov1alpha1.PassiveServerHealthCheckApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RateLimit"):

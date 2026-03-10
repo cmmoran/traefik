@@ -101,6 +101,8 @@ http:
 | Middleware                                | Purpose                                           | Area                        |
 |-------------------------------------------|---------------------------------------------------|-----------------------------|
 | [AddPrefix](addprefix.md)                 | Adds a Path Prefix                                | Path Modifier               |
+| [APIKey](apikey.md)                       | Adds API Key Authentication                       | Security, Authentication    |
+| [OIDC](oidc.md)                           | Adds OpenID Connect Authentication                | Security, Authentication    |
 | [BasicAuth](basicauth.md)                 | Adds Basic Authentication                         | Security, Authentication    |
 | [Buffering](buffering.md)                 | Buffers the request/response                      | Request Lifecycle           |
 | [Chain](chain.md)                         | Combines multiple pieces of middleware            | Misc                        |
@@ -110,6 +112,7 @@ http:
 | [DigestAuth](digestauth.md)               | Adds Digest Authentication                        | Security, Authentication    |
 | [Errors](errorpages.md)                   | Defines custom error pages                        | Request Lifecycle           |
 | [ForwardAuth](forwardauth.md)             | Delegates Authentication                          | Security, Authentication    |
+| [GeoIP](geoip.md)                         | Adds GeoIP headers from MMDB files                | Security, Request lifecycle |
 | [Headers](headers.md)                     | Adds / Updates headers                            | Security                    |
 | [IPAllowList](ipallowlist.md)             | Limits the allowed client IPs                     | Security, Request lifecycle |
 | [InFlightReq](inflightreq.md)             | Limits the number of simultaneous connections     | Security, Request lifecycle |

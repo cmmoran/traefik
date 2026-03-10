@@ -412,13 +412,9 @@ func TestForwardAuthFailResponseHeaders(t *testing.T) {
 }
 
 func TestForwardAuthClientClosedRequest(t *testing.T) {
-	requestStarted := make(chan struct{})
-	requestCancelled := make(chan struct{})
-	responseComplete := make(chan struct{})
-
 	authTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		close(requestStarted)
-		<-requestCancelled
+		// The auth server should not be called when the request is already canceled.
+		t.Fail()
 	}))
 	t.Cleanup(authTs.Close)
 
@@ -434,20 +430,12 @@ func TestForwardAuthClientClosedRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
 	req := httptest.NewRequestWithContext(ctx, "GET", "http://foo", http.NoBody)
 
 	recorder := httptest.NewRecorder()
-	go func() {
-		authMiddleware.ServeHTTP(recorder, req)
-		close(responseComplete)
-	}()
-
-	<-requestStarted
-
-	cancel()
-	close(requestCancelled)
-
-	<-responseComplete
+	authMiddleware.ServeHTTP(recorder, req)
 
 	assert.Equal(t, httputil.StatusClientClosedRequest, recorder.Result().StatusCode)
 }
