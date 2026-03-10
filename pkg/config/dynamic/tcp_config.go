@@ -89,6 +89,8 @@ type RouterTCPTLSConfig struct {
 	Options      string         `json:"options,omitempty" toml:"options,omitempty" yaml:"options,omitempty" export:"true"`
 	CertResolver string         `json:"certResolver,omitempty" toml:"certResolver,omitempty" yaml:"certResolver,omitempty" export:"true"`
 	Domains      []types.Domain `json:"domains,omitempty" toml:"domains,omitempty" yaml:"domains,omitempty" export:"true"`
+	// CertResolverOptions defines resolver-specific TLS overrides.
+	CertResolverOptions *CertResolverOptions `json:"certResolverOptions,omitempty" toml:"certResolverOptions,omitempty" yaml:"certResolverOptions,omitempty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true

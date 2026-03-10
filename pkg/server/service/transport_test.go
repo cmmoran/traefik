@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	"github.com/traefik/traefik/v3/pkg/provider/vaultpki"
 	traefiktls "github.com/traefik/traefik/v3/pkg/tls"
 	"github.com/traefik/traefik/v3/pkg/types"
 )
@@ -576,6 +577,115 @@ func TestMTLS(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestVaultPKIClientResolverErrors(t *testing.T) {
+	t.Run("fails without manager", func(t *testing.T) {
+		transportManager := NewTransportManager(nil)
+		transportManager.Update(map[string]*dynamic.ServersTransport{
+			"test": {
+				ClientCertResolver: "vaultpki",
+			},
+		})
+
+		rt, err := transportManager.GetRoundTripper("test")
+		require.NoError(t, err)
+		tlsCfg := tlsConfigForRoundTripper(rt)
+		require.NotNil(t, tlsCfg)
+		assert.Nil(t, tlsCfg.GetClientCertificate)
+		assert.Empty(t, tlsCfg.Certificates)
+	})
+
+	t.Run("rejects SPIFFE with Vault PKI client resolver", func(t *testing.T) {
+		transportManager := NewTransportManager(nil)
+		transportManager.Update(map[string]*dynamic.ServersTransport{
+			"test": {
+				ClientCertResolver: "vaultpki",
+				Spiffe:             &dynamic.Spiffe{},
+			},
+		})
+
+		rt, err := transportManager.GetRoundTripper("test")
+		require.NoError(t, err)
+		tlsCfg := tlsConfigForRoundTripper(rt)
+		require.NotNil(t, tlsCfg)
+		assert.Nil(t, tlsCfg.GetClientCertificate)
+		assert.Empty(t, tlsCfg.Certificates)
+	})
+
+	t.Run("rejects static certs with Vault PKI client resolver", func(t *testing.T) {
+		transportManager := NewTransportManager(nil)
+		transportManager.Update(map[string]*dynamic.ServersTransport{
+			"test": {
+				ClientCertResolver: "vaultpki",
+				Certificates: traefiktls.Certificates{
+					{CertFile: types.FileOrContent(mTLSCert), KeyFile: types.FileOrContent(mTLSKey)},
+				},
+			},
+		})
+
+		rt, err := transportManager.GetRoundTripper("test")
+		require.NoError(t, err)
+		tlsCfg := tlsConfigForRoundTripper(rt)
+		require.NotNil(t, tlsCfg)
+		assert.Nil(t, tlsCfg.GetClientCertificate)
+		assert.Empty(t, tlsCfg.Certificates)
+	})
+}
+
+func TestVaultPKIClientResolverUsesManager(t *testing.T) {
+	cacheDir := t.TempDir()
+	cfg := &vaultpki.Configuration{
+		URL:      "https://vault.example.internal",
+		PKIPath:  "pki",
+		Role:     "traefik-client",
+		CacheDir: cacheDir,
+		Issue: &vaultpki.IssueConfig{
+			CommonName: "client",
+		},
+		Auth: &vaultpki.AuthConfig{
+			Token: "test-token",
+		},
+		RenewBefore: 0,
+	}
+	cfg.SetDefaults()
+
+	cacheFile := cfg.CacheDir + "/" + cfg.CacheFileBase("vaultpki", *cfg.Issue)
+	payload := append([]byte(mTLSCert), []byte("\n")...)
+	payload = append(payload, mTLSKey...)
+	require.NoError(t, os.WriteFile(cacheFile, payload, 0o600))
+
+	manager := vaultpki.NewManager(map[string]*vaultpki.Configuration{
+		"vaultpki": cfg,
+	})
+
+	transportManager := NewTransportManager(nil, WithVaultPKIManager(manager))
+	transportManager.Update(map[string]*dynamic.ServersTransport{
+		"test": {
+			ClientCertResolver: "vaultpki",
+		},
+	})
+
+	rt, err := transportManager.GetRoundTripper("test")
+	require.NoError(t, err)
+
+	tlsCfg := tlsConfigForRoundTripper(rt)
+	require.NotNil(t, tlsCfg)
+	assert.NotNil(t, tlsCfg.GetClientCertificate)
+	assert.Empty(t, tlsCfg.Certificates)
+}
+
+func tlsConfigForRoundTripper(rt http.RoundTripper) *tls.Config {
+	switch v := rt.(type) {
+	case *kerberosRoundTripper:
+		return tlsConfigForRoundTripper(v.OriginalRoundTripper)
+	case *smartRoundTripper:
+		return v.http2.TLSClientConfig
+	case *http.Transport:
+		return v.TLSClientConfig
+	default:
+		return nil
+	}
 }
 
 func TestSpiffeMTLS(t *testing.T) {
