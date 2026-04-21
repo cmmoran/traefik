@@ -76,6 +76,32 @@ func getLockInfo(ctx context.Context) (lockInfo, bool) {
 func (v *vaultLock) DoWithLock(ctx context.Context, fn func(context.Context) error) error {
 	logger := log.Ctx(ctx).With().Str("lib", "vaultlock").Logger()
 	v.refMu.Lock()
+	if info, ok := getLockInfo(ctx); ok && info.Owner == v.OwnerID {
+		logger.Debug().Msgf("Nested lock context incrementing refCount %d", v.refCount)
+		v.refCount++
+		v.refMu.Unlock()
+
+		defer func() {
+			v.refMu.Lock()
+			logger.Debug().Msgf("Nested lock context decrementing refCount %d", v.refCount)
+			v.refCount--
+			if v.refCount == 0 {
+				_, err := v.unlock(ctx)
+				if err != nil {
+					logger.Error().Err(err).Msg("Failed to unlock store")
+				}
+			}
+			v.refMu.Unlock()
+		}()
+
+		return fn(ctx)
+	}
+
+	if v.refCount != 0 {
+		v.refMu.Unlock()
+		return ErrLockHeld
+	}
+
 	if v.refCount == 0 {
 		var acquired bool
 		var err error
@@ -93,12 +119,18 @@ func (v *vaultLock) DoWithLock(ctx context.Context, fn func(context.Context) err
 	v.refCount++
 	v.refMu.Unlock()
 
+	lockManagementCtx := context.WithoutCancel(ctx)
+	lockCtx, cancelLease := context.WithCancelCause(ctx)
+	stopHeartbeat := v.startHeartbeat(lockManagementCtx, cancelLease)
+
 	defer func() {
+		stopHeartbeat()
+		cancelLease(nil)
 		v.refMu.Lock()
 		logger.Debug().Msgf("Lock relenquished decrementing refCount %d", v.refCount)
 		v.refCount--
 		if v.refCount == 0 {
-			_, err := v.unlock(ctx)
+			_, err := v.unlock(lockManagementCtx)
 			if err != nil {
 				logger.Error().Err(err).Msg("Failed to unlock store")
 			}
@@ -106,7 +138,44 @@ func (v *vaultLock) DoWithLock(ctx context.Context, fn func(context.Context) err
 		v.refMu.Unlock()
 	}()
 
-	return fn(ctx)
+	err := fn(lockCtx)
+	if leaseErr := context.Cause(lockCtx); leaseErr != nil {
+		if err != nil {
+			return errors.Join(err, leaseErr)
+		}
+		return leaseErr
+	}
+
+	return err
+}
+
+func (v *vaultLock) startHeartbeat(ctx context.Context, cancel context.CancelCauseFunc) func() {
+	interval := v.StaleAfter / 3
+	if interval <= 0 {
+		interval = time.Second
+	}
+
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	ticker := time.NewTicker(interval)
+
+	go func() {
+		defer ticker.Stop()
+		logger := log.Ctx(ctx).With().Str("lib", "vaultlock-heartbeat").Logger()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if err := v.renew(heartbeatCtx); err != nil {
+					logger.Error().Err(err).Msg("Failed to renew vault lock heartbeat")
+					cancel(fmt.Errorf("vault lock heartbeat failed: %w", err))
+					return
+				}
+			}
+		}
+	}()
+
+	return stopHeartbeat
 }
 
 func (v *vaultLock) IsLocked(ctx context.Context) (bool, error) {
@@ -202,51 +271,58 @@ func (v *vaultLock) ensureInitialized(ctx context.Context) error {
 }
 
 func (v *vaultLock) hasLock(ctx context.Context) bool {
-	logger := log.Ctx(ctx)
 	if info, ok := getLockInfo(ctx); ok && info.Owner == v.OwnerID {
-		resp, err := v.Client.Secrets.KvV2Read(ctx, v.Key, vault.WithMountPath(v.MountPath))
+		_, curr, err := v.readCurrentPayload(ctx)
 		if err != nil {
 			return false
 		}
-
-		version, err := extractVersion(resp.Data.Metadata)
-		if err != nil {
-			return false
-		}
-
-		var curr lockPayload
-		if err = decodePayload(resp.Data.Data, &curr); err != nil {
-			return false
-		}
-		if !curr.Locked || curr.Owner != v.OwnerID {
-			return false
-		}
-
-		expiry := time.Unix(curr.Timestamp, 0).Add(v.StaleAfter)
-		if time.Until(expiry) < v.StaleAfter/2 {
-			logger.Debug().Msgf("Lock is expiring soon, renewing it. Expiry: %s", expiry)
-			newPayload := map[string]interface{}{
-				"locked":    true,
-				"owner":     v.OwnerID,
-				"timestamp": time.Now().Unix(),
-			}
-			if _, err = v.Client.Secrets.KvV2Write(ctx, v.Key, schema.KvV2WriteRequest{
-				Data: newPayload,
-				Options: map[string]interface{}{
-					"cas": version,
-				},
-				Version: version,
-			}, vault.WithMountPath(v.MountPath)); err != nil {
-				logger.Error().Err(err).Msg("Failed to renew lock")
-				return false
-			}
-			logger.Debug().Msgf("Lock renewed, Expiry: %s", time.Unix(newPayload["timestamp"].(int64), 0).Add(v.StaleAfter))
-		}
-
-		return true
+		return curr.Locked && curr.Owner == v.OwnerID
 	}
 
 	return false
+}
+
+func (v *vaultLock) renew(ctx context.Context) error {
+	version, curr, err := v.readCurrentPayload(ctx)
+	if err != nil {
+		return err
+	}
+	if !curr.Locked || curr.Owner != v.OwnerID {
+		return fmt.Errorf("cannot renew lock owned by %q", curr.Owner)
+	}
+
+	newPayload := map[string]interface{}{
+		"locked":    true,
+		"owner":     v.OwnerID,
+		"timestamp": time.Now().Unix(),
+	}
+	_, err = v.Client.Secrets.KvV2Write(ctx, v.Key, schema.KvV2WriteRequest{
+		Data: newPayload,
+		Options: map[string]interface{}{
+			"cas": version,
+		},
+		Version: version,
+	}, vault.WithMountPath(v.MountPath))
+	return err
+}
+
+func (v *vaultLock) readCurrentPayload(ctx context.Context) (int32, lockPayload, error) {
+	resp, err := v.Client.Secrets.KvV2Read(ctx, v.Key, vault.WithMountPath(v.MountPath))
+	if err != nil {
+		return 0, lockPayload{}, err
+	}
+
+	version, err := extractVersion(resp.Data.Metadata)
+	if err != nil {
+		return 0, lockPayload{}, err
+	}
+
+	var curr lockPayload
+	if err = decodePayload(resp.Data.Data, &curr); err != nil {
+		return 0, lockPayload{}, err
+	}
+
+	return version, curr, nil
 }
 
 func (v *vaultLock) tryLock(ctx context.Context) (context.Context, bool, error) {

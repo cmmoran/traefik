@@ -1,6 +1,7 @@
 package acmeredux
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -10,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -92,6 +92,7 @@ type Configuration struct {
 
 	ClientTimeout               ptypes.Duration `description:"Timeout for a complete HTTP transaction with the ACME server." json:"clientTimeout,omitempty" toml:"clientTimeout,omitempty" yaml:"clientTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 	ClientResponseHeaderTimeout ptypes.Duration `description:"Timeout for receiving the response headers when communicating with the ACME server." json:"clientResponseHeaderTimeout,omitempty" toml:"clientResponseHeaderTimeout,omitempty" yaml:"clientResponseHeaderTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
+	CertificateTimeout          ptypes.Duration `description:"Timeout for obtaining the certificate during the finalization request." json:"certificateTimeout,omitempty" toml:"certificateTimeout,omitempty" yaml:"certificateTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 
 	CACertificates   []string `description:"Specify the paths to PEM encoded CA Certificates that can be used to authenticate an ACME server with an HTTPS certificate not issued by a CA in the system-wide trusted root list." json:"caCertificates,omitempty" toml:"caCertificates,omitempty" yaml:"caCertificates,omitempty"`
 	CASystemCertPool bool     `description:"Define if the certificates pool must use a copy of the system cert pool." json:"caSystemCertPool,omitempty" toml:"caSystemCertPool,omitempty" yaml:"caSystemCertPool,omitempty" export:"true"`
@@ -139,6 +140,7 @@ func (a *Configuration) SetDefaults() {
 	a.CertificatesDuration = 3 * 30 * 24 // 90 Days
 	a.ClientTimeout = ptypes.Duration(2 * time.Minute)
 	a.ClientResponseHeaderTimeout = ptypes.Duration(30 * time.Second)
+	a.CertificateTimeout = ptypes.Duration(30 * time.Second)
 }
 
 // CertAndStore allows mapping a TLS certificate to a TLS store.
@@ -250,10 +252,11 @@ func (p *Provider) Init() error {
 	}
 
 	var err error
-	p.account, err = p.Store.GetAccount(p.ResolverName)
+	state, err := p.Store.GetResolverState(p.ResolverName)
 	if err != nil {
-		return fmt.Errorf("unable to get ACME account: %w", err)
+		return fmt.Errorf("unable to get ACME resolver state: %w", err)
 	}
+	p.account = cloneAccount(state.Account)
 
 	// Reset Account if caServer changed, thus registration URI can be updated
 	if p.account != nil && p.account.Registration != nil && !isAccountMatchingCaServer(logger.WithContext(context.Background()), p.account.Registration.URI, p.CAServer) {
@@ -262,12 +265,8 @@ func (p *Provider) Init() error {
 	}
 
 	p.certificatesMu.Lock()
-	p.certificates, err = p.Store.GetCertificates(p.ResolverName)
+	p.certificates = cloneCertAndStores(state.Certificates)
 	p.certificatesMu.Unlock()
-
-	if err != nil {
-		return fmt.Errorf("unable to get ACME certificates : %w", err)
-	}
 
 	// Init the currently resolved domain map
 	p.resolvingDomains = make(map[string]struct{})
@@ -349,18 +348,15 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 				if certsMayChange {
 					if isLocked, err := p.Store.IsLocked(ctx); !isLocked && err == nil {
 						plogger.Debug().Msg("Lock was released, checking store for certificate updates")
-						p.certificatesMu.Lock()
-						if certificates, cerr := p.Store.GetCertificates(p.ResolverName, true); cerr != nil {
+						if state, cerr := p.Store.GetResolverState(p.ResolverName, true); cerr != nil {
 							plogger.Error().Err(cerr).Msg("Unable to get certificates from store")
 						} else {
-							plogger.Debug().Any("before", p.certificates).Any("after", certificates).Msg("Certificates found in store, checking if they have changed")
-							if !reflect.DeepEqual(p.certificates, certificates) {
-								plogger.Debug().Msg("Certificate changes detected, updating memory")
-								p.certificates = certificates
+							updated := p.updateCertificatesFromStore(state.Certificates)
+							if updated {
+								plogger.Debug().Msg("Certificate changes detected, published updated TLS configuration")
 							}
 							certsMayChange = false
 						}
-						p.certificatesMu.Unlock()
 					} else {
 						plogger.Debug().Msg("Lock is still held, waiting until next tick")
 					}
@@ -377,13 +373,12 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	return nil
 }
 
-func (p *Provider) getClient() (*lego.Client, error) {
+func (p *Provider) getClient(ctx context.Context) (*lego.Client, error) {
 	p.clientMutex.Lock()
 	defer p.clientMutex.Unlock()
 
 	logger := log.With().Str(logs.ProviderName, p.ResolverName+resolverSuffix).Logger()
-
-	ctx := logger.WithContext(context.Background())
+	ctx = logger.WithContext(ctx)
 
 	if p.client != nil {
 		return p.client, nil
@@ -407,8 +402,9 @@ func (p *Provider) getClient() (*lego.Client, error) {
 	config.Certificate.KeyType = GetKeyType(ctx, p.KeyType)
 	config.UserAgent = fmt.Sprintf("containous-traefik/%s", version.Version)
 	config.Certificate.DisableCommonName = p.DisableCommonName
+	config.Certificate.Timeout = time.Duration(p.CertificateTimeout)
 
-	config.HTTPClient, err = p.createHTTPClient()
+	config.HTTPClient, err = p.createHTTPClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP client: %w", err)
 	}
@@ -430,7 +426,7 @@ func (p *Provider) getClient() (*lego.Client, error) {
 
 	// Save the account once before all the certificates generation/storing
 	// No certificate can be generated if account is not initialized
-	err = p.Store.SaveAccount(p.ResolverName, account)
+	err = p.Store.SaveAccountLocked(ctx, p.ResolverName, account)
 	if err != nil {
 		return nil, err
 	}
@@ -496,25 +492,40 @@ func (p *Provider) getClient() (*lego.Client, error) {
 	return p.client, nil
 }
 
-func (p *Provider) createHTTPClient() (*http.Client, error) {
+func (p *Provider) createHTTPClient(ctx context.Context) (*http.Client, error) {
 	tlsConfig, err := p.createClientTLSConfig()
 	if err != nil {
 		return nil, fmt.Errorf("creating client TLS config: %w", err)
 	}
 
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ResponseHeaderTimeout: time.Duration(p.ClientResponseHeaderTimeout),
+		TLSClientConfig:       tlsConfig,
+	}
+
 	return &http.Client{
 		Timeout: time.Duration(p.ClientTimeout),
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			TLSHandshakeTimeout:   30 * time.Second,
-			ResponseHeaderTimeout: time.Duration(p.ClientResponseHeaderTimeout),
-			TLSClientConfig:       tlsConfig,
-		},
+		Transport: &leaseBoundRoundTripper{leaseCtx: ctx, next: transport},
 	}, nil
+}
+
+type leaseBoundRoundTripper struct {
+	leaseCtx context.Context
+	next     http.RoundTripper
+}
+
+func (l *leaseBoundRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := l.leaseCtx.Err(); err != nil {
+		return nil, err
+	}
+
+	return l.next.RoundTrip(req.Clone(l.leaseCtx))
 }
 
 func (p *Provider) createClientTLSConfig() (*tls.Config, error) {
@@ -616,11 +627,8 @@ func (p *Provider) resolveAndAddCertificate(ctx context.Context, domain types.Do
 		return
 	}
 
-	if (len(domain.Main) > 0 || len(domain.SANs) > 0) && cert != nil {
-		err = p.addCertificateForDomain(dom, cert, tlsStore)
-		if err != nil {
-			logger.Error().Err(err).Strs("domains", dom.ToStrArray()).Msg("Error adding certificate for domains")
-		}
+	if cert == nil {
+		logger.Debug().Strs("domains", dom.ToStrArray()).Msg("No certificate changes were required")
 	}
 }
 
@@ -742,7 +750,7 @@ func (p *Provider) resolveCertificate(ctx context.Context, domain types.Domain, 
 	logger.Debug().Strs("domains", domains).Msg("Sanitized domains")
 
 	var cert *certificate.Resource
-	if err = p.Store.DoWithLock(ctx, func(ctx context.Context) error {
+	if err = p.withResolverLease(ctx, func(ctx context.Context, state *StoredData) error {
 		// Check if provided certificates are not already in progress and lock them if needed
 		uncheckedDomains := p.getUncheckedDomains(ctx, domains, tlsStore)
 		if len(uncheckedDomains) == 0 {
@@ -754,9 +762,12 @@ func (p *Provider) resolveCertificate(ctx context.Context, domain types.Domain, 
 		logger.Debug().Msgf("Got Lock: Loading ACME certificates %+v...", uncheckedDomains)
 
 		var client *lego.Client
-		client, err = p.getClient()
+		client, err = p.getClient(ctx)
 		if err != nil {
 			return fmt.Errorf("cannot get ACME client %w", err)
+		}
+		if err = ensureResolverLease(ctx); err != nil {
+			return err
 		}
 
 		request := certificate.ObtainRequest{
@@ -770,6 +781,9 @@ func (p *Provider) resolveCertificate(ctx context.Context, domain types.Domain, 
 		if err != nil {
 			return fmt.Errorf("unable to generate a certificate for the domains %v: %w", uncheckedDomains, err)
 		}
+		if err = ensureResolverLease(ctx); err != nil {
+			return err
+		}
 		if cert == nil {
 			return fmt.Errorf("unable to generate a certificate for the domains %v", uncheckedDomains)
 		}
@@ -782,6 +796,10 @@ func (p *Provider) resolveCertificate(ctx context.Context, domain types.Domain, 
 		domain = types.Domain{Main: uncheckedDomains[0]}
 		if len(uncheckedDomains) > 1 {
 			domain.SANs = uncheckedDomains[1:]
+		}
+
+		if err = p.addCertificateForDomainLocked(ctx, domain, cert, tlsStore); err != nil {
+			return fmt.Errorf("unable to persist certificate for domains %v: %w", uncheckedDomains, err)
 		}
 
 		return nil
@@ -809,32 +827,94 @@ func (p *Provider) removeResolvingDomains(resolvingDomains []string) {
 	}
 }
 
-func (p *Provider) addCertificateForDomain(domain types.Domain, crt *certificate.Resource, tlsStore string) error {
+func (p *Provider) addCertificateForDomainLocked(ctx context.Context, domain types.Domain, crt *certificate.Resource, tlsStore string) error {
 	if crt == nil {
 		return nil
 	}
 
+	cert := Certificate{Certificate: crt.Certificate, Key: crt.PrivateKey, Domain: domain}
+
+	committedCertificates, err := p.Store.UpsertCertificateLocked(ctx, p.ResolverName, cert, tlsStore)
+	if err != nil {
+		return err
+	}
+
+	p.certificatesMu.Lock()
+	p.certificates = cloneCertAndStores(committedCertificates)
+	msg := p.buildMessage()
+	p.certificatesMu.Unlock()
+
+	p.configurationChan <- msg
+	return nil
+}
+
+func (p *Provider) withResolverLease(ctx context.Context, fn func(context.Context, *StoredData) error) error {
+	return p.Store.WithResolverLease(ctx, p.ResolverName, func(leaseCtx context.Context, state *StoredData) error {
+		if changed := p.applyResolverState(state); changed {
+			log.Ctx(leaseCtx).Debug().Msg("Applied fresh resolver state from Vault and published updated TLS configuration")
+		}
+
+		if err := ensureResolverLease(leaseCtx); err != nil {
+			return err
+		}
+
+		return fn(leaseCtx, state)
+	})
+}
+
+func (p *Provider) applyResolverState(state *StoredData) bool {
+	p.clientMutex.Lock()
+	p.account = cloneAccount(state.Account)
+	// The resolver lease refresh is authoritative for account state.
+	// Drop any cached lego client so the current workflow rebuilds from the
+	// freshly loaded locked state instead of reusing a client tied to stale
+	// account data.
+	p.client = nil
+	p.clientMutex.Unlock()
+
+	return p.updateCertificatesFromStore(state.Certificates)
+}
+
+func (p *Provider) updateCertificatesFromStore(certificates []*CertAndStore) bool {
 	p.certificatesMu.Lock()
 	defer p.certificatesMu.Unlock()
 
-	cert := Certificate{Certificate: crt.Certificate, Key: crt.PrivateKey, Domain: domain}
-
-	certUpdated := false
-	for _, domainsCertificate := range p.certificates {
-		if reflect.DeepEqual(domain, domainsCertificate.Certificate.Domain) {
-			domainsCertificate.Certificate = cert
-			certUpdated = true
-			break
-		}
+	if sameCertAndStores(p.certificates, certificates) {
+		return false
 	}
 
-	if !certUpdated {
-		p.certificates = append(p.certificates, &CertAndStore{Certificate: cert, Store: tlsStore})
-	}
-
+	p.certificates = cloneCertAndStores(certificates)
 	p.configurationChan <- p.buildMessage()
+	return true
+}
 
-	return p.Store.SaveCertificates(p.ResolverName, p.certificates)
+func cloneCertAndStores(certs []*CertAndStore) []*CertAndStore {
+	if certs == nil {
+		return nil
+	}
+
+	cloned := make([]*CertAndStore, 0, len(certs))
+	for _, cert := range certs {
+		if cert == nil {
+			cloned = append(cloned, nil)
+			continue
+		}
+
+		clone := *cert
+		clone.Domain = types.Domain{Main: cert.Domain.Main}
+		if cert.Domain.SANs != nil {
+			clone.Domain.SANs = append([]string(nil), cert.Domain.SANs...)
+		}
+		if cert.Certificate.Certificate != nil {
+			clone.Certificate.Certificate = append([]byte(nil), cert.Certificate.Certificate...)
+		}
+		if cert.Certificate.Key != nil {
+			clone.Certificate.Key = append([]byte(nil), cert.Certificate.Key...)
+		}
+		cloned = append(cloned, &clone)
+	}
+
+	return cloned
 }
 
 // getCertificateRenewDurations returns renew durations calculated from the given certificatesDuration in hours.
@@ -873,7 +953,7 @@ func deleteUnnecessaryDomains(ctx context.Context, domains []types.Domain) []typ
 				continue
 			}
 
-			if reflect.DeepEqual(domain, domainToCheck) {
+			if sameDomain(domain, domainToCheck) {
 				if idxDomainToCheck > idxDomain {
 					logger.Warn().Msgf("The domain %v is duplicated in the configuration but will be process by ACME provider only once.", domainToCheck)
 					keepDomain = false
@@ -944,7 +1024,7 @@ func (p *Provider) buildMessage() dynamic.Message {
 func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Duration) {
 	logger := log.Ctx(ctx)
 
-	if err := p.Store.DoWithLock(ctx, func(ctx context.Context) error {
+	if err := p.withResolverLease(ctx, func(ctx context.Context, state *StoredData) error {
 		logger.Info().Msg("Testing certificate renew...")
 
 		p.certificatesMu.RLock()
@@ -963,10 +1043,17 @@ func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Durat
 		p.certificatesMu.RUnlock()
 
 		for _, cert := range certificates {
-			client, err := p.getClient()
+			if err := ensureResolverLease(ctx); err != nil {
+				return err
+			}
+
+			client, err := p.getClient(ctx)
 			if err != nil {
 				logger.Info().Err(err).Msgf("Error renewing certificate from LE : %+v", cert.Domain)
 				continue
+			}
+			if err := ensureResolverLease(ctx); err != nil {
+				return err
 			}
 
 			logger.Info().Msgf("Renewing certificate from LE : %+v", cert.Domain)
@@ -987,13 +1074,16 @@ func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Durat
 				logger.Error().Err(err).Msgf("Error renewing certificate from LE: %v", cert.Domain)
 				continue
 			}
+			if err := ensureResolverLease(ctx); err != nil {
+				return err
+			}
 
 			if len(renewedCert.Certificate) == 0 || len(renewedCert.PrivateKey) == 0 {
 				logger.Error().Msgf("domains %v renew certificate with no value: %v", cert.Domain.ToStrArray(), cert)
 				continue
 			}
 
-			err = p.addCertificateForDomain(cert.Domain, renewedCert, cert.Store)
+			err = p.addCertificateForDomainLocked(ctx, cert.Domain, renewedCert, cert.Store)
 			if err != nil {
 				logger.Error().Err(err).Msg("Error adding certificate for domain")
 			}
@@ -1009,6 +1099,16 @@ func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Durat
 			}
 		}
 	}
+}
+
+func ensureResolverLease(ctx context.Context) error {
+	if err := context.Cause(ctx); err != nil {
+		return fmt.Errorf("resolver lease lost: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Get provided certificate which check a domains list (Main and SANs)
@@ -1126,7 +1226,7 @@ func (p *Provider) certExists(validDomains []string) bool {
 	for _, cert := range p.certificates {
 		domains := cert.Certificate.Domain.ToStrArray()
 		sort.Strings(domains[1:])
-		if reflect.DeepEqual(domains, validDomains) {
+		if sameStringSlice(domains, validDomains) {
 			return true
 		}
 	}
@@ -1143,4 +1243,53 @@ func isDomainAlreadyChecked(domainToCheck string, existentDomains []string) bool
 		}
 	}
 	return false
+}
+
+func sameDomain(a, b types.Domain) bool {
+	if a.Main != b.Main {
+		return false
+	}
+
+	return sameStringSlice(a.SANs, b.SANs)
+}
+
+func sameStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func sameCertificate(a, b Certificate) bool {
+	return sameDomain(a.Domain, b.Domain) &&
+		bytes.Equal(a.Certificate, b.Certificate) &&
+		bytes.Equal(a.Key, b.Key)
+}
+
+func sameCertAndStores(a, b []*CertAndStore) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		switch {
+		case a[i] == nil && b[i] == nil:
+			continue
+		case a[i] == nil || b[i] == nil:
+			return false
+		case a[i].Store != b[i].Store:
+			return false
+		case !sameCertificate(a[i].Certificate, b[i].Certificate):
+			return false
+		}
+	}
+
+	return true
 }

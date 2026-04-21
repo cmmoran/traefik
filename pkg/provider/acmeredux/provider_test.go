@@ -1,15 +1,62 @@
 package acmeredux
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
+	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/lego"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"github.com/traefik/traefik/v3/pkg/safe"
 	"github.com/traefik/traefik/v3/pkg/types"
 )
+
+type testStore struct {
+	getResolverStateFn        func(resolverName string, force ...bool) (*StoredData, error)
+	withResolverLeaseFn       func(ctx context.Context, resolverName string, f func(context.Context, *StoredData) error) error
+	upsertCertificateLockedFn func(ctx context.Context, resolverName string, cert Certificate, tlsStore string) ([]*CertAndStore, error)
+	saveAccountLockedFn       func(ctx context.Context, resolverName string, account *Account) error
+}
+
+func (t *testStore) GetResolverState(resolverName string, force ...bool) (*StoredData, error) {
+	if t.getResolverStateFn != nil {
+		return t.getResolverStateFn(resolverName, force...)
+	}
+	return &StoredData{}, nil
+}
+func (t *testStore) SaveAccountLocked(ctx context.Context, resolverName string, account *Account) error {
+	if t.saveAccountLockedFn != nil {
+		return t.saveAccountLockedFn(ctx, resolverName, account)
+	}
+	return nil
+}
+func (t *testStore) UpsertCertificateLocked(ctx context.Context, resolverName string, cert Certificate, tlsStore string) ([]*CertAndStore, error) {
+	if t.upsertCertificateLockedFn != nil {
+		return t.upsertCertificateLockedFn(ctx, resolverName, cert, tlsStore)
+	}
+	return nil, nil
+}
+func (t *testStore) WithResolverLease(ctx context.Context, resolverName string, f func(context.Context, *StoredData) error) error {
+	if t.withResolverLeaseFn != nil {
+		return t.withResolverLeaseFn(ctx, resolverName, f)
+	}
+
+	state, err := t.GetResolverState(resolverName, true)
+	if err != nil {
+		return err
+	}
+	return f(ctx, state)
+}
+func (t *testStore) IsLocked(context.Context) (bool, error) { return false, nil }
 
 func TestGetUncheckedCertificates(t *testing.T) {
 	t.Skip("Needs TLS Manager")
@@ -184,6 +231,252 @@ func TestGetUncheckedCertificates(t *testing.T) {
 			assert.Len(t, domains, len(test.expectedDomains), "Unexpected domains.")
 		})
 	}
+}
+
+func TestProviderUpdateCertificatesFromStorePublishes(t *testing.T) {
+	configurationChan := make(chan dynamic.Message, 1)
+	initial := []*CertAndStore{{
+		Certificate: Certificate{
+			Domain:      types.Domain{Main: "old.example.com"},
+			Certificate: []byte("old-cert"),
+			Key:         []byte("old-key"),
+		},
+		Store: "default",
+	}}
+	updated := []*CertAndStore{{
+		Certificate: Certificate{
+			Domain:      types.Domain{Main: "new.example.com"},
+			Certificate: []byte("new-cert"),
+			Key:         []byte("new-key"),
+		},
+		Store: "default",
+	}}
+
+	provider := &Provider{
+		certificates:      cloneCertAndStores(initial),
+		configurationChan: configurationChan,
+	}
+
+	changed := provider.updateCertificatesFromStore(updated)
+	require.True(t, changed)
+
+	select {
+	case msg := <-configurationChan:
+		require.Len(t, msg.Configuration.TLS.Certificates, 1)
+		assert.Equal(t, types.FileOrContent([]byte("new-cert")), msg.Configuration.TLS.Certificates[0].Certificate.CertFile)
+	default:
+		t.Fatal("expected refreshed TLS configuration to be published")
+	}
+
+	require.Len(t, provider.certificates, 1)
+	assert.Equal(t, "new.example.com", provider.certificates[0].Domain.Main)
+}
+
+func TestProviderAddCertificateForDomainLockedPublishesOnlyAfterSuccessfulSave(t *testing.T) {
+	configurationChan := make(chan dynamic.Message, 1)
+	initial := []*CertAndStore{{
+		Certificate: Certificate{
+			Domain:      types.Domain{Main: "example.com"},
+			Certificate: []byte("old-cert"),
+			Key:         []byte("old-key"),
+		},
+		Store: "default",
+	}}
+
+	saveErr := errors.New("save failed")
+	provider := &Provider{
+		ResolverName:      "test",
+		Store:             &testStore{upsertCertificateLockedFn: func(context.Context, string, Certificate, string) ([]*CertAndStore, error) { return nil, saveErr }},
+		certificates:      cloneCertAndStores(initial),
+		configurationChan: configurationChan,
+	}
+
+	err := provider.addCertificateForDomainLocked(context.Background(), types.Domain{Main: "example.com"}, &certificate.Resource{
+		Certificate: []byte("new-cert"),
+		PrivateKey:  []byte("new-key"),
+	}, "default")
+	require.ErrorIs(t, err, saveErr)
+
+	select {
+	case <-configurationChan:
+		t.Fatal("did not expect TLS configuration publish when certificate save fails")
+	default:
+	}
+
+	require.Len(t, provider.certificates, 1)
+	assert.Equal(t, []byte("old-cert"), provider.certificates[0].Certificate.Certificate)
+}
+
+func TestProviderAddCertificateForDomainLockedUsesCommittedStoreState(t *testing.T) {
+	configurationChan := make(chan dynamic.Message, 1)
+	initial := []*CertAndStore{{
+		Certificate: Certificate{
+			Domain:      types.Domain{Main: "stale.example.com"},
+			Certificate: []byte("stale-cert"),
+			Key:         []byte("stale-key"),
+		},
+		Store: "default",
+	}}
+	committed := []*CertAndStore{
+		{
+			Certificate: Certificate{
+				Domain:      types.Domain{Main: "fresh.example.com"},
+				Certificate: []byte("fresh-cert"),
+				Key:         []byte("fresh-key"),
+			},
+			Store: "default",
+		},
+		{
+			Certificate: Certificate{
+				Domain:      types.Domain{Main: "example.com"},
+				Certificate: []byte("new-cert"),
+				Key:         []byte("new-key"),
+			},
+			Store: "default",
+		},
+	}
+
+	provider := &Provider{
+		ResolverName: "test",
+		Store: &testStore{upsertCertificateLockedFn: func(_ context.Context, resolverName string, cert Certificate, tlsStore string) ([]*CertAndStore, error) {
+			require.Equal(t, "test", resolverName)
+			require.Equal(t, types.Domain{Main: "example.com"}, cert.Domain)
+			require.Equal(t, "default", tlsStore)
+			return cloneCertAndStores(committed), nil
+		}},
+		certificates:      cloneCertAndStores(initial),
+		configurationChan: configurationChan,
+	}
+
+	err := provider.addCertificateForDomainLocked(context.Background(), types.Domain{Main: "example.com"}, &certificate.Resource{
+		Certificate: []byte("new-cert"),
+		PrivateKey:  []byte("new-key"),
+	}, "default")
+	require.NoError(t, err)
+
+	select {
+	case msg := <-configurationChan:
+		require.Len(t, msg.Configuration.TLS.Certificates, 2)
+		assert.Equal(t, types.FileOrContent([]byte("fresh-cert")), msg.Configuration.TLS.Certificates[0].Certificate.CertFile)
+		assert.Equal(t, types.FileOrContent([]byte("new-cert")), msg.Configuration.TLS.Certificates[1].Certificate.CertFile)
+	default:
+		t.Fatal("expected TLS configuration publish")
+	}
+
+	require.Equal(t, committed, provider.certificates)
+}
+
+func TestProviderWithResolverLeaseUsesFreshStoreStateAndPublishes(t *testing.T) {
+	stale := []*CertAndStore{{
+		Certificate: Certificate{
+			Domain:      types.Domain{Main: "stale.example.com"},
+			Certificate: []byte("stale-cert"),
+			Key:         []byte("stale-key"),
+		},
+		Store: "default",
+	}}
+	fresh := []*CertAndStore{{
+		Certificate: Certificate{
+			Domain:      types.Domain{Main: "fresh.example.com"},
+			Certificate: []byte("fresh-cert"),
+			Key:         []byte("fresh-key"),
+		},
+		Store: "default",
+	}}
+	configurationChan := make(chan dynamic.Message, 1)
+
+	provider := &Provider{
+		ResolverName: "test",
+		Store: &testStore{getResolverStateFn: func(resolverName string, force ...bool) (*StoredData, error) {
+			require.Equal(t, "test", resolverName)
+			require.Len(t, force, 1)
+			require.True(t, force[0])
+			return &StoredData{Certificates: cloneCertAndStores(fresh)}, nil
+		}},
+		certificates:      cloneCertAndStores(stale),
+		configurationChan: configurationChan,
+	}
+
+	require.NoError(t, provider.withResolverLease(context.Background(), func(context.Context, *StoredData) error { return nil }))
+	require.Equal(t, fresh, provider.certificates)
+
+	select {
+	case msg := <-configurationChan:
+		require.Len(t, msg.Configuration.TLS.Certificates, 1)
+		assert.Equal(t, types.FileOrContent([]byte("fresh-cert")), msg.Configuration.TLS.Certificates[0].Certificate.CertFile)
+	default:
+		t.Fatal("expected TLS configuration publish")
+	}
+}
+
+func TestProviderApplyResolverStateClearsCachedClient(t *testing.T) {
+	provider := &Provider{
+		account: &Account{Email: "stale@example.com"},
+		client:  &lego.Client{},
+	}
+
+	changed := provider.applyResolverState(&StoredData{
+		Account: &Account{Email: "fresh@example.com"},
+	})
+
+	require.False(t, changed)
+	require.NotNil(t, provider.account)
+	assert.Equal(t, "fresh@example.com", provider.account.Email)
+	assert.Nil(t, provider.client)
+}
+
+func TestLeaseBoundRoundTripperUsesLeaseContext(t *testing.T) {
+	leaseCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Same(t, leaseCtx, req.Context())
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+		}, nil
+	})
+
+	rt := &leaseBoundRoundTripper{leaseCtx: leaseCtx, next: transport}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com", nil)
+	require.NoError(t, err)
+
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+}
+
+func TestLeaseBoundRoundTripperRejectsCanceledLease(t *testing.T) {
+	leaseCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	called := false
+	rt := &leaseBoundRoundTripper{
+		leaseCtx: leaseCtx,
+		next: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, nil
+		}),
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	require.NoError(t, err)
+
+	_, err = rt.RoundTrip(req)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, called)
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestAcmeReduxConfigurationSetDefaultsIncludesCertificateTimeout(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.SetDefaults()
+
+	assert.Equal(t, 30*time.Second, time.Duration(cfg.CertificateTimeout))
 }
 
 func TestProvider_sanitizeDomains(t *testing.T) {
